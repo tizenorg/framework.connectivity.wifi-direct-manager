@@ -7,7 +7,6 @@ start_wifi_direct()
 	if [ "X${target}" == "X" ]; then
 		echo "${program} is not running"
 		echo "Launching ${program}"
-		. /etc/profile.d/tizen_platform_env.sh
 		/usr/bin/${program}&
 		sleep 1
 	else
