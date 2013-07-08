@@ -757,6 +757,24 @@ void wfd_server_process_client_request(wifi_direct_client_request_s * client_req
 			}
 
 		}
+		else if (wfd_server->current_peer.is_group_owner)
+		{
+			wfd_server_set_state(WIFI_DIRECT_STATE_DISCONNECTING);
+			ret = wfd_oem_disconnect();
+			if (ret)
+			{
+				wfd_server_remember_connecting_peer(client_req->data.mac_addr);
+				wfd_server->config_data.wps_config = WIFI_DIRECT_WPS_TYPE_PBC;
+			}
+			else
+			{
+				wfd_server_set_state(WIFI_DIRECT_STATE_ACTIVATED);
+				WDS_LOGE("Error... wfd_oem_disconnect() failed");
+				noti.event = WIFI_DIRECT_CLI_EVENT_DISCONNECTION_RSP;
+				noti.error = WIFI_DIRECT_ERROR_OPERATION_FAILED;
+				__wfd_server_send_client_event(&noti);
+			}
+		}
 		else
 		{
 			if (wfd_server->state < WIFI_DIRECT_STATE_CONNECTED) {
