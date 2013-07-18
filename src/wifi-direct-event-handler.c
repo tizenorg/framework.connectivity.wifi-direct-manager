@@ -854,10 +854,27 @@ void wfd_server_process_event(wfd_event_t event)
 					 MAC2STR(wfd_server->current_peer.mac_address));
 
 			noti.event = WIFI_DIRECT_CLI_EVENT_DISCONNECTION_RSP;
+			noti.error = WIFI_DIRECT_ERROR_NONE;
 			wfd_server_reset_connecting_peer();
 			wfd_server_clear_connected_peer();
 			__wfd_server_send_client_event(&noti);
 			//wfd_oem_start_discovery(true, 0);
+			break;
+		case WFD_EVENT_GROUP_OWNER_NEGOTIATION_FAIL:
+			if (wfd_oem_is_groupowner())
+			{
+				wfd_server_set_state(WIFI_DIRECT_STATE_GROUP_OWNER);
+			}
+			else
+			{
+				wfd_server_cancel_dhcp_wait_timer();
+				wfd_server_set_state(WIFI_DIRECT_STATE_ACTIVATED);
+			}
+			snprintf(noti.param1, sizeof(noti.param1),MACSTR, MAC2STR(wfd_server->current_peer.mac_address));
+			wfd_server_reset_connecting_peer();
+			noti.event = WIFI_DIRECT_CLI_EVENT_DISCONNECTION_RSP;
+			noti.error = WIFI_DIRECT_ERROR_NONE;
+			__wfd_server_send_client_event(&noti);
 			break;
 		default:
 			WDS_LOGI(
