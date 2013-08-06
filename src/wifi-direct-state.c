@@ -266,7 +266,7 @@ void wfd_server_set_state(int state)
 
 	// Reset autonomous group owner flag
 	if (wfd_server->state == WIFI_DIRECT_STATE_GROUP_OWNER &&
-		state != WIFI_DIRECT_STATE_GROUP_OWNER)
+		state != WIFI_DIRECT_STATE_GROUP_OWNER && state != WIFI_DIRECT_STATE_CONNECTING)
 	{
 		if (wfd_server->autonomous_group_owner == true)
 		{
