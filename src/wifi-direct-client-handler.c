@@ -616,67 +616,80 @@ void wfd_server_process_client_request(wifi_direct_client_request_s * client_req
 			WDS_LOGF( "Error... available number of clients is full!!\n");
 			resp.result = WIFI_DIRECT_ERROR_TOO_MANY_CLIENT;
 			wfd_server_send_response(client->sync_sockfd, &resp, sizeof(wifi_direct_client_response_s));
+			break;
+		}
+
+		wfd_discovery_entry_s *peer = NULL;
+
+		ret = wfd_oem_get_peer_info(client_req->data.mac_addr, &peer);
+		if (!ret || !peer) {
+			resp.result = WIFI_DIRECT_ERROR_OPERATION_FAILED;
+			wfd_server_send_response(client->sync_sockfd, &resp, sizeof(wifi_direct_client_response_s));
+			break;
+		}
+
+		if (wfd_oem_is_groupowner() && peer->is_group_owner) {
+			resp.result = WIFI_DIRECT_ERROR_NOT_PERMITTED;
+			wfd_server_send_response(client->sync_sockfd, &resp, sizeof(wifi_direct_client_response_s));
+			break;
+		} else {
+			resp.result = WIFI_DIRECT_ERROR_NONE;
+			wfd_server_send_response(client->sync_sockfd, &resp, sizeof(wifi_direct_client_response_s));
+		}
+
+		wfd_server_set_state(WIFI_DIRECT_STATE_CONNECTING);
+
+		memcpy(&wfd_server->current_peer, peer, sizeof(wfd_discovery_entry_s));
+
+		wps_config = wfd_server->config_data.wps_config;
+		WDS_LOGI( "wps_config : %d\n", wps_config);
+
+		if (wfd_server->config_data.want_persistent_group == true)
+		{
+			/* skip prov_disco_req() in persistent mode. reinvoke stored persistent group or create new persistent group */
+			ret = wfd_oem_connect_for_persistent_group(client_req->data.mac_addr, wps_config);
+			WDS_LOGI( "wfd_oem_connect_for_persistent_group: ret = %d\n", ret);
 		}
 		else
 		{
-			resp.result = WIFI_DIRECT_ERROR_NONE;
-			wfd_server_send_response(client->sync_sockfd, &resp, sizeof(wifi_direct_client_response_s));
-
-			wfd_server_set_state(WIFI_DIRECT_STATE_CONNECTING);
-
-			wfd_server_remember_connecting_peer(client_req->data.mac_addr);
-
-			wps_config = wfd_server->config_data.wps_config;
-			WDS_LOGI( "wps_config : %d\n", wps_config);
-
-			if (wfd_server->config_data.want_persistent_group == true)
+			if (wfd_oem_is_groupowner() == true)
 			{
-				/* skip prov_disco_req() in persistent mode. reinvoke stored persistent group or create new persistent group */
-				ret = wfd_oem_connect_for_persistent_group(client_req->data.mac_addr, wps_config);
-				WDS_LOGI( "wfd_oem_connect_for_persistent_group: ret = %d\n", ret);
+				wfd_oem_cancel_discovery();
+				ret = wfd_oem_send_invite_request(client_req->data.mac_addr);
+				WDS_LOGI( "Invite request: ret = %d\n", ret);
 			}
 			else
 			{
-				if (wfd_oem_is_groupowner() == true)
-				{
-					wfd_oem_cancel_discovery();
-					ret = wfd_oem_send_invite_request(client_req->data.mac_addr);
-					WDS_LOGI( "Invite request: ret = %d\n", ret);
-				}
-				else
-				{
-					ret = wfd_oem_send_provision_discovery_request(client_req->data.mac_addr, wps_config, wfd_server->current_peer.is_group_owner);
-					WDS_LOGI( "ProvisionDiscovery request: ret = %d\n", ret);
-				}
+				ret = wfd_oem_send_provision_discovery_request(client_req->data.mac_addr, wps_config, wfd_server->current_peer.is_group_owner);
+				WDS_LOGI( "ProvisionDiscovery request: ret = %d\n", ret);
 			}
-
-			if (ret == true)
-			{
-				snprintf(noti.param1, sizeof(noti.param1), MACSTR, MAC2STR(client_req->data.mac_addr));
-
-				noti.event = WIFI_DIRECT_CLI_EVENT_CONNECTION_START;
-				noti.error = WIFI_DIRECT_ERROR_NONE;
-			}
-			else
-			{
-				if (wfd_oem_is_groupowner() == true)
-				{
-					wfd_server_set_state(WIFI_DIRECT_STATE_GROUP_OWNER);
-				}
-				else
-				{
-					wfd_server_set_state(WIFI_DIRECT_STATE_ACTIVATED);
-				}
-
-				WDS_LOGF( "Error... fail to connect\n");
-				
-				noti.event = WIFI_DIRECT_CLI_EVENT_CONNECTION_RSP;
-				noti.error = WIFI_DIRECT_ERROR_OPERATION_FAILED;
-			}
-
-			__wfd_server_send_client_event(&noti);
 		}
 
+		if (ret == true)
+		{
+			snprintf(noti.param1, sizeof(noti.param1), MACSTR, MAC2STR(client_req->data.mac_addr));
+
+			noti.event = WIFI_DIRECT_CLI_EVENT_CONNECTION_START;
+			noti.error = WIFI_DIRECT_ERROR_NONE;
+		}
+		else
+		{
+			if (wfd_oem_is_groupowner() == true)
+			{
+				wfd_server_set_state(WIFI_DIRECT_STATE_GROUP_OWNER);
+			}
+			else
+			{
+				wfd_server_set_state(WIFI_DIRECT_STATE_ACTIVATED);
+			}
+
+			WDS_LOGF( "Error... fail to connect\n");
+
+			noti.event = WIFI_DIRECT_CLI_EVENT_CONNECTION_RSP;
+			noti.error = WIFI_DIRECT_ERROR_OPERATION_FAILED;
+		}
+
+		__wfd_server_send_client_event(&noti);
 
 		__WDS_LOG_FUNC_EXIT__;
 		return;
