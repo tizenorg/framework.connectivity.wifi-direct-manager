@@ -474,13 +474,18 @@ void wfd_server_process_client_request(wifi_direct_client_request_s * client_req
 
 	case WIFI_DIRECT_CMD_START_DISCOVERY:
 	{
+		int res = 0;
 		bool listen_only = client_req->data.listen_only;
 		int timeout = client_req->data.timeout;
 		wifi_direct_state_e state = wfd_server_get_state();
 
 		WDS_LOGF( "Flag of Listen only : %s timeout[%d]\n", listen_only ? "ON" : "OFF", timeout);
 
-		if (wfd_oem_start_discovery(listen_only, timeout)==true)
+		if (state == WIFI_DIRECT_STATE_GROUP_OWNER)
+			res = wfd_oem_restart_discovery();
+		else
+			res = wfd_oem_start_discovery(listen_only, timeout);
+		if (res==true)
 		{
 			if (state == WIFI_DIRECT_STATE_ACTIVATED ||
 					state == WIFI_DIRECT_STATE_DISCOVERING)

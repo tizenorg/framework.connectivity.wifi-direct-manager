@@ -425,6 +425,7 @@ int wfd_ws_wps_pbc_start(unsigned char mac_addr[6]);
 int wfd_ws_wps_pin_start(unsigned char mac_addr[6]);
 bool wfd_ws_is_discovery_enabled();
 int wfd_ws_start_discovery(bool listen_only, int timeout);
+int wfd_ws_restart_discovery();
 int wfd_ws_cancel_discovery();
 int wfd_ws_get_discovery_result(wfd_discovery_entry_s ** peer_list, int* peer_num);
 int wfd_ws_get_peer_info(unsigned char *mac_addr, wfd_discovery_entry_s **peer);

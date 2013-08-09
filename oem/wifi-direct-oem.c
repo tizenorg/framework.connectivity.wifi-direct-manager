@@ -162,6 +162,17 @@ int wfd_oem_start_discovery(bool listen_only, int timeout)
 	return (g_ops->wfd_oem_start_discovery(listen_only, timeout));
 }
 
+int wfd_oem_restart_discovery()
+{
+	if (NULL == g_ops->wfd_oem_restart_discovery)
+	{
+		WDS_LOGE( "g_ops->wfd_oem_restart_discovery is NULL!!\n");
+		return false;
+	}
+
+	return (g_ops->wfd_oem_restart_discovery());
+}
+
 int wfd_oem_cancel_discovery()
 {
 	if (NULL == g_ops->wfd_oem_cancel_discovery)

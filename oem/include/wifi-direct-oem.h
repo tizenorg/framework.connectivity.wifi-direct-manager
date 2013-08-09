@@ -37,6 +37,7 @@ int wfd_oem_disconnect_sta(unsigned char mac_addr[6]);
 int wfd_oem_reject_connection(unsigned char mac_addr[6]);
 bool wfd_oem_is_discovery_enabled(void);
 int wfd_oem_start_discovery(bool listen_only, int timeout);
+int wfd_oem_restart_discovery(void);
 int wfd_oem_cancel_discovery(void);
 int wfd_oem_get_discovery_result(wfd_discovery_entry_s ** peer_list, int* peer_num);
 int wfd_oem_get_peer_info(unsigned char *mac_addr, wfd_discovery_entry_s **peer);
@@ -87,6 +88,7 @@ struct wfd_oem_operations {
 	int (*wfd_oem_reject_connection) (unsigned char mac_addr[6]);
 	bool (*wfd_oem_is_discovery_enabled)(void);
 	int (*wfd_oem_start_discovery)(bool listen_only, int timeout);
+	int (*wfd_oem_restart_discovery)(void);
 	int (*wfd_oem_cancel_discovery)(void);
 	int (*wfd_oem_get_discovery_result)(wfd_discovery_entry_s ** peer_list, int* peer_num);
 	int (*wfd_oem_get_peer_info)(unsigned char *mac_addr, wfd_discovery_entry_s **peer);

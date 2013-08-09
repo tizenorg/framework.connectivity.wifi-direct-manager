@@ -1,3 +1,11 @@
+wfi-direct-manager (0.6.28) precise; urgency=low
+
+  * Fix bug(N_SE-48369: GC is disconnected when GO is scaning)
+  * Git : framework/connectivity/wifi-direct-manager
+  * Tag : wifi-direct-manager_0.6.26
+
+ -- Gibyoung Kim <lastkgb.kim@samsung.com>  Fri, 09 Aug 2013 20:34:41 +0900
+
 wfi-direct-manager (0.6.27) precise; urgency=low
 
   * Fix bug(N_SE-48407: When device cancel connection to GO, GO should be able to destroy group)
@@ -5,7 +13,7 @@ wfi-direct-manager (0.6.27) precise; urgency=low
   * Git : framework/connectivity/wifi-direct-manager
   * Tag : wifi-direct-manager_0.6.26
 
- -- Gibyoung Kim <lastkgb.kim@samsung.com>  Thu, 18 Jul 2013 20:34:41 +0900
+ -- Gibyoung Kim <lastkgb.kim@samsung.com>  Thu, 08 Aug 2013 17:12:15 +0900
 
 wfi-direct-manager (0.6.26) precise; urgency=low
 

@@ -75,6 +75,7 @@ static struct wfd_oem_operations supplicant_ops =
 	.wfd_oem_reject_connection = wfd_ws_reject_connection,
 	.wfd_oem_is_discovery_enabled = wfd_ws_is_discovery_enabled,
 	.wfd_oem_start_discovery = wfd_ws_start_discovery,
+	.wfd_oem_restart_discovery = wfd_ws_restart_discovery,
 	.wfd_oem_cancel_discovery = wfd_ws_cancel_discovery,
 	.wfd_oem_get_discovery_result = wfd_ws_get_discovery_result,
 	.wfd_oem_get_peer_info = wfd_ws_get_peer_info,
@@ -110,8 +111,6 @@ static struct wfd_oem_operations supplicant_ops =
 	.wfd_oem_set_persistent_group_enabled = wfd_ws_set_persistent_reconnect,
 	.wfd_oem_connect_for_persistent_group = wfd_ws_connect_for_persistent_group,
 };
-
-static int wfd_ws_restart_discovery();
 
 int wfd_plugin_load( struct wfd_oem_operations **ops)
 {
@@ -2827,7 +2826,7 @@ int wfd_ws_start_discovery(bool listen_only, int timeout)
 	{
 		wfd_ws_flush();
 
-		snprintf(cmd, sizeof(cmd), CMD_START_DISCOVER);
+		snprintf(cmd, sizeof(cmd), CMD_START_DISCOVER " %d", timeout);
 		result = __send_wpa_request(g_control_sockfd, cmd, (char*)res_buffer, res_buffer_len);
 		WDP_LOGD( "__send_wpa_request(P2P_FIND) result=[%d]\n", result);
 	}
@@ -2864,7 +2863,7 @@ int wfd_ws_restart_discovery()
 	int res_buffer_len=sizeof(res_buffer);
 	int result = 0;
 
-	snprintf(cmd, sizeof(cmd), CMD_START_DISCOVER);
+	snprintf(cmd, sizeof(cmd), CMD_START_DISCOVER " 4 type=social");
 	result = __send_wpa_request(g_control_sockfd, cmd, (char*)res_buffer, res_buffer_len);
 	WDP_LOGD( "__send_wpa_request(P2P_FIND) result=[%d]\n", result);
 
@@ -2929,6 +2928,7 @@ int wfd_ws_get_discovery_result(wfd_discovery_entry_s ** peer_list, int* peer_nu
 	int result = 0;
 	int peer_count = 0;
 	int i;
+	int j = 0;
 	ws_discovered_peer_info_s ws_peer_list[MAX_PEER_NUM];
 	static wfd_discovery_entry_s wfd_peer_list[16];
 
@@ -2982,9 +2982,25 @@ int wfd_ws_get_discovery_result(wfd_discovery_entry_s ** peer_list, int* peer_nu
 
 	WDP_LOGD( "number of discovered peers: %d\n", peer_count);
 
+	GList *element = NULL;
+	int connected_peer;
+
 	for(i=0; i<peer_count; i++)
 	{
-		memset(&wfd_peer_list[i], 0, sizeof(wfd_discovery_entry_s));
+		connected_peer = 0;
+		element = g_list_first(g_conn_peer_addr);
+		while(element) {
+			if (!strncmp(element->data, ws_peer_list[i].mac, MACSTR_LEN)) {
+				connected_peer = 1;
+				break;
+			}
+			element = g_list_next(element);
+		}
+
+		if (connected_peer)
+			continue;
+
+		memset(&wfd_peer_list[j], 0, sizeof(wfd_discovery_entry_s));
 		WDP_LOGD( "index [%d] MAC [%s] GOstate=[%s] groupCapab=[%x] devCapab=[%x] is_wfd_device[%d] Name[%s] type=[%s] ssid[%s]\n",
 				i,
 				ws_peer_list[i].mac,
@@ -3016,59 +3032,60 @@ int wfd_ws_get_discovery_result(wfd_discovery_entry_s ** peer_list, int* peer_nu
 		unsigned char la_mac_addr[6];
 		memset(la_mac_addr, 0x0, sizeof(la_mac_addr));
 		wfd_macaddr_atoe(ws_peer_list[i].mac, la_mac_addr);
-		memcpy(wfd_peer_list[i].mac_address, (char*)(la_mac_addr), sizeof(la_mac_addr));
+		memcpy(wfd_peer_list[j].mac_address, (char*)(la_mac_addr), sizeof(la_mac_addr));
 
 		// Interface MAC address
 		memset(la_mac_addr, 0x0, sizeof(la_mac_addr));
 		wfd_macaddr_atoe(ws_peer_list[i].interface_addr, la_mac_addr);
-		memcpy(wfd_peer_list[i].intf_mac_address, (char*)(la_mac_addr), sizeof(la_mac_addr));
+		memcpy(wfd_peer_list[j].intf_mac_address, (char*)(la_mac_addr), sizeof(la_mac_addr));
 
 		// WPS Config method
-		wfd_peer_list[i].wps_cfg_methods = 0;
+		wfd_peer_list[j].wps_cfg_methods = 0;
 		if ((ws_peer_list[i].config_methods & WPS_CONFIG_DISPLAY) > 0)
-			wfd_peer_list[i].wps_cfg_methods += WIFI_DIRECT_WPS_TYPE_PIN_DISPLAY;
+			wfd_peer_list[j].wps_cfg_methods += WIFI_DIRECT_WPS_TYPE_PIN_DISPLAY;
 		if ((ws_peer_list[i].config_methods & WPS_CONFIG_PUSHBUTTON) > 0)
-			wfd_peer_list[i].wps_cfg_methods += WIFI_DIRECT_WPS_TYPE_PBC;
+			wfd_peer_list[j].wps_cfg_methods += WIFI_DIRECT_WPS_TYPE_PBC;
 		if ((ws_peer_list[i].config_methods & WPS_CONFIG_KEYPAD) > 0)
-			wfd_peer_list[i].wps_cfg_methods += WIFI_DIRECT_WPS_TYPE_PIN_KEYPAD;
+			wfd_peer_list[j].wps_cfg_methods += WIFI_DIRECT_WPS_TYPE_PIN_KEYPAD;
 
 		// Device name --> SSID
-		strncpy(wfd_peer_list[i].device_name, ws_peer_list[i].device_name, WIFI_DIRECT_MAX_DEVICE_NAME_LEN);
-		wfd_peer_list[i].device_name[WIFI_DIRECT_MAX_DEVICE_NAME_LEN] = '\0';
+		strncpy(wfd_peer_list[j].device_name, ws_peer_list[i].device_name, WIFI_DIRECT_MAX_DEVICE_NAME_LEN);
+		wfd_peer_list[j].device_name[WIFI_DIRECT_MAX_DEVICE_NAME_LEN] = '\0';
 
 		// is_group_owner
 		if ((ws_peer_list[i].group_capab & GROUP_CAPAB_GROUP_OWNER) > 0)  /* checking GO state */
-			wfd_peer_list[i].is_group_owner = true;
+			wfd_peer_list[j].is_group_owner = true;
 		else
-			wfd_peer_list[i].is_group_owner = false;
+			wfd_peer_list[j].is_group_owner = false;
 
 		WDP_LOGD( "GroupOwnerCapab: %x & %x = %d\n", ws_peer_list[i].group_capab, GROUP_CAPAB_GROUP_OWNER, (ws_peer_list[i].group_capab & GROUP_CAPAB_GROUP_OWNER));
 
 		// is_persistent_go
 		if ((ws_peer_list[i].group_capab & GROUP_CAPAB_PERSISTENT_GROUP) > 0)  /* checking persistent GO state */
-			wfd_peer_list[i].is_persistent_go = true;
+			wfd_peer_list[j].is_persistent_go = true;
 		else
-			wfd_peer_list[i].is_persistent_go = false;
+			wfd_peer_list[j].is_persistent_go = false;
 
 		// is_connected
 		if (strncmp(ws_peer_list[i].member_in_go_dev, "00:00:00:00:00:00", strlen("00:00:00:00:00:00"))!=0)
-			wfd_peer_list[i].is_connected = true;
+			continue;
 		else
-			wfd_peer_list[i].is_connected = false;
+			wfd_peer_list[j].is_connected = false;
 
 		// Listen channel
 		// ToDo: convert freq to channel...
-		wfd_peer_list[i].channel = ws_peer_list[i].listen_freq;
+		wfd_peer_list[j].channel = ws_peer_list[i].listen_freq;
 
 		// wps_device_pwd_id
 		// ToDo: where to get it?
-		wfd_peer_list[i].wps_device_pwd_id = 0;
+		wfd_peer_list[j].wps_device_pwd_id = 0;
 
-		wfd_peer_list[i].category = __convert_device_type(ws_peer_list[i].pri_dev_type);
-		wfd_peer_list[i].subcategory = __convert_secondary_device_type(ws_peer_list[i].pri_dev_type);
+		wfd_peer_list[j].category = __convert_device_type(ws_peer_list[i].pri_dev_type);
+		wfd_peer_list[j].subcategory = __convert_secondary_device_type(ws_peer_list[i].pri_dev_type);
+		j++;
 	}
 
-	*peer_num = peer_count;
+	*peer_num = j;
 	*peer_list = &wfd_peer_list[0];
 
 	WDP_LOGE( "Getting discovery result is Completed.\n");
