@@ -352,6 +352,7 @@ static int wfd_server_init(void)
 	// ToDo: Read them from repository.
 	g_wfd_server.config_data.channel = 11;
 	g_wfd_server.config_data.wps_config = WIFI_DIRECT_WPS_TYPE_PBC;
+	g_wfd_server.config_data.req_wps_config = WIFI_DIRECT_WPS_TYPE_PBC;
 	g_wfd_server.config_data.auto_connection = false;
 	g_wfd_server.config_data.want_persistent_group = false;
 	g_wfd_server.config_data.max_clients = WFD_MAX_ASSOC_STA;
@@ -412,33 +413,6 @@ static gboolean wfd_connection_timeout_cb(void *user_data)
 		wfd_server_set_state(WIFI_DIRECT_STATE_GROUP_OWNER);
 	else
 		wfd_server_set_state(WIFI_DIRECT_STATE_ACTIVATED);
-
-#if 0
-	// disconnect the peer to reset state.
-	if (wfd_oem_is_groupowner() == TRUE)
-	{
-		WDS_LOGD( "Peer's Intf MAC is " MACSTR "\n", MAC2STR(wfd_server->current_peer.intf_mac_address));
-		if ( NULL == wfd_server->current_peer.intf_mac_address )
-			WDS_LOGF( "[wfd_server->current_peer.intf_mac_address] is Null!\n");
-
-		if (wfd_oem_disconnect_sta(wfd_server->current_peer.intf_mac_address) == FALSE)
-			WDS_LOGF( "Error... wfd_oem_disconnect_sta() failed\n");
-	}
-	else
-	{
-		wfd_server_set_state(WIFI_DIRECT_STATE_DISCONNECTING);
-
-		if (wfd_oem_disconnect() == TRUE)
-		{
-			wfd_server->config_data.wps_config = WIFI_DIRECT_WPS_TYPE_PBC;	// set wps_config to default
-		}
-		else
-		{
-			wfd_server_set_state(WIFI_DIRECT_STATE_ACTIVATED);
-			WDS_LOGF( "Error... wfd_oem_disconnect() failed\n");
-		}
-	}
-#endif
 
 	memset(&noti, 0, sizeof(wifi_direct_client_noti_s));
 	snprintf(noti.param1, sizeof(noti.param1),MACSTR, MAC2STR(wfd_server->current_peer.mac_address));

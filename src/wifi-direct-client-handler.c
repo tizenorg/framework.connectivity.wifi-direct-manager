@@ -583,26 +583,6 @@ void wfd_server_process_client_request(wifi_direct_client_request_s * client_req
 	case WIFI_DIRECT_CMD_SEND_PROVISION_DISCOVERY_REQ:
 	{
 		resp.result = WIFI_DIRECT_ERROR_NONE;
-#if 0
-		int peer_index = -1;
-		static wfd_discovery_entry_s plist[WFD_MAX_CLIENTS];
-		wifi_direct_wps_type_e	wps_config;
-		memset(&plist, 0, sizeof(wfd_discovery_entry_s) * WFD_MAX_CLIENTS);
-		int peer_count = 0;
-
-		// TODO: need to check mac address validation and wps config
-
-		wps_config = WIFI_DIRECT_WPS_TYPE_PBC;
-		if (wfd_oem_send_provision_discovery_request(client_req->data.mac_addr, wps_config) == true)
-		{
-			wfd_server_remember_connecting_peer(client_req->data.mac_addr);
-			resp.result = WIFI_DIRECT_ERROR_NONE;
-		}
-		else
-		{
-			resp.result = WIFI_DIRECT_ERROR_OPERATION_FAILED;
-		}
-#endif
 		wfd_server_send_response(client->sync_sockfd, &resp, sizeof(wifi_direct_client_response_s));
 		__WDS_LOG_FUNC_EXIT__;
 		return;
@@ -646,7 +626,7 @@ void wfd_server_process_client_request(wifi_direct_client_request_s * client_req
 
 		memcpy(&wfd_server->current_peer, peer, sizeof(wfd_discovery_entry_s));
 
-		wps_config = wfd_server->config_data.wps_config;
+		wps_config = wfd_server->config_data.req_wps_config;
 		WDS_LOGI( "wps_config : %d\n", wps_config);
 
 		if (wfd_server->config_data.want_persistent_group == true)
@@ -797,7 +777,7 @@ void wfd_server_process_client_request(wifi_direct_client_request_s * client_req
 		{
 			if (wfd_server->state < WIFI_DIRECT_STATE_CONNECTED) {
 				ret = wfd_oem_reject_connection(client_req->data.mac_addr);
-				ret = wfd_oem_connect(client_req->data.mac_addr, wfd_server->config_data.wps_config);
+				ret = wfd_oem_connect(client_req->data.mac_addr, wfd_server->config_data.req_wps_config);
 			} else {
 				ret = wfd_oem_disconnect();
 			}
@@ -1246,14 +1226,50 @@ void wfd_server_process_client_request(wifi_direct_client_request_s * client_req
 			return;
 		}
 
-		WDS_LOGF( "wps_mode (%d)\n", wps_mode);
+		WDS_LOGD( "wps_mode (%d)\n", wps_mode);
+		wfd_server->config_data.wps_config = wps_mode;
 
 		resp.param1 = wfd_server_get_state();
-		resp.result = ret;
+		resp.result = WIFI_DIRECT_ERROR_NONE;
+		if (wfd_server_send_response(client->sync_sockfd, &resp, sizeof(wifi_direct_client_response_s)) < 0)
+		{
+			wfd_server_reset_client(client->sync_sockfd);
+			__WDS_LOG_FUNC_EXIT__;
+			return;
+		}
+	}
+	break;
 
-		wfd_server->config_data.wps_config = wps_mode;
+	case WIFI_DIRECT_CMD_SET_REQUESTED_WPS_MODE:
+	{
+		wifi_direct_wps_type_e wps_mode;
+		if(wfd_server_read_socket_event(client->sync_sockfd, (char*)&wps_mode, sizeof(wifi_direct_wps_type_e)) < 0)
+		{
+			wfd_server_reset_client(client->sync_sockfd);
+			__WDS_LOG_FUNC_EXIT__;
+			return;
+		}
+
+		WDS_LOGF( "wps_mode (%d)\n", wps_mode);
+		wfd_server->config_data.req_wps_config = wps_mode;
 				
 		resp.result = WIFI_DIRECT_ERROR_NONE;
+		if (wfd_server_send_response(client->sync_sockfd, &resp, sizeof(wifi_direct_client_response_s)) < 0)
+		{
+			wfd_server_reset_client(client->sync_sockfd);
+			__WDS_LOG_FUNC_EXIT__;
+			return;
+		}
+	}
+	break;
+
+	case WIFI_DIRECT_CMD_GET_REQUESTED_WPS_MODE:
+	{
+		WDS_LOGD("wps_mode (%d)\n", wfd_server->config_data.req_wps_config);
+
+		resp.param1 = wfd_server->config_data.req_wps_config;
+		resp.result = WIFI_DIRECT_ERROR_NONE;
+
 		if (wfd_server_send_response(client->sync_sockfd, &resp, sizeof(wifi_direct_client_response_s)) < 0)
 		{
 			wfd_server_reset_client(client->sync_sockfd);
