@@ -236,7 +236,7 @@ int __create_ctrl_intf(char *ctrl_intf_name, char *path)
 	unlink(local_path);
 
 	errno = 0;
-	if ((sockfd = socket(AF_UNIX, SOCK_DGRAM, 0)) < 0)
+	if ((sockfd = socket(AF_UNIX, SOCK_DGRAM, 0)) < 3)
 	{
 		WDP_LOGE( "Error!!! creating sync socket. Error = [%s].\n", strerror(errno));
 		__WDP_LOG_FUNC_EXIT__;
