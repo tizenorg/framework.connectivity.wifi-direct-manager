@@ -1,0 +1,17 @@
+<manifest>
+	<define>
+		<domain name="wifi_direct_manager" policy="restricted" plist="wifi-direct-plugin-broadcom, wifi-direct-plugin-wpasupplicant"/>
+		<permit>
+			<smack permit="system::use_internet" type="w"/>
+		</permit>
+	</define>
+	<assign>
+		<filesystem path="/usr/bin/wifi-direct-server.sh" label="_" />
+		<filesystem path="/usr/bin/wifi-direct-dhcp.sh" label="_" />
+		<filesystem path="/usr/bin/dhcpd-notify.sh" label="_" />
+		<filesystem path="/usr/sbin/p2p_supp.sh" label="_" />
+	</assign>
+	<request>
+		<domain name="wifi_direct_manager"/>
+	</request>
+</manifest>

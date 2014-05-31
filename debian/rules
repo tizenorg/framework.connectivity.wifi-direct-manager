@@ -1,0 +1,144 @@
+#!/usr/bin/make -f
+# -*- makefile -*-
+# Sample debian/rules that uses debhelper.
+# This file was originally written by Joey Hess and Craig Small.
+# As a special exception, when this file is copied by dh-make into a
+# dh-make output file, you may use that output file without restriction.
+# This special exception was added by Craig Small in version 0.37 of dh-make.
+
+# Uncomment this to turn on verbose mode.
+#export DH_VERBOSE=1
+
+CFLAGS ?= -Wall -g
+CXXFLAGS ?=  -Wall -g
+LDFLAGS ?= 
+PREFIX ?= /usr
+DATADIR ?= /opt
+
+ifneq (,$(findstring noopt,$(DEB_BUILD_OPTIONS)))
+	CFLAGS += -O0
+	CXXFLAGS += -O0
+else
+	CFLAGS += -O2
+	CXXFLAGS += -O2
+endif
+
+CFLAGS += -DX1SETTING -D_DLOG_UTIL
+#LDFLAGS += -Wl,--rpath=$(PREFIX)/lib -Wl,--as-needed
+LDFLAGS += -Wl,--rpath=$(PREFIX)/lib
+
+
+configure: configure-stamp
+configure-stamp:
+	dh_testdir
+	# Add here commands to configure the package.
+	CFLAGS="$(CFLAGS)" CXXFLAGS="$(CXXFLAGS)" LDFLAGS="$(LDFLAGS)" cmake . -DCMAKE_INSTALL_PREFIX=$(PREFIX)
+
+	touch configure-stamp
+
+build: build-stamp
+
+build-stamp: configure-stamp 
+	dh_testdir
+
+	# Add here commands to compile the package.
+	$(MAKE) -j5
+
+	dpkg-architecture
+	echo "deb-arch = ${DEB_BUILD_ARCH}"
+
+	cp debian/wifi-direct-manager.install.in.${DEB_BUILD_ARCH} debian/wifi-direct-manager.install.in 
+	cp debian/wifi-direct-plugin-broadcom.install.in.${DEB_BUILD_ARCH} debian/wifi-direct-plugin-broadcom.install.in 
+		
+	for f in `find $(CURDIR)/debian/ -name "*.in"`; do \
+		cat $$f > $${f%.in}; \
+		sed -i -e "s#@PREFIX@#$(PREFIX)#g" $${f%.in}; \
+		sed -i -e "s#@DATADIR@#$(DATADIR)#g" $${f%.in}; \
+        done
+	
+ 
+	touch $@
+
+clean:
+	dh_testdir
+	dh_testroot
+	rm -f build-stamp configure-stamp
+
+	# Add here commands to clean up after the build process.
+	-$(MAKE) clean
+	rm -rf CMakeCache.txt
+	rm -rf CMakeFiles
+	rm -rf cmake_install.cmake
+	rm -rf Makefile
+	rm -rf install_manifest.txt
+	
+	rm -rf src/CMakeCache.txt
+	rm -rf src/CMakeFiles
+	rm -rf src/cmake_install.cmake
+	rm -rf src/install_manifest.txt
+	rm -rf src/Makefile
+	
+	rm -rf plugin/broadcom/CMakeCache.txt
+	rm -rf plugin/broadcom/CMakeFiles
+	rm -rf plugin/boradcom/cmake_install.cmake
+	rm -rf plugin/broadcom/install_manifest.txt
+	rm -rf plugin/broadcom/Makefile
+
+	rm -rf plugin/wpasupplicant/CMakeCache.txt
+	rm -rf plugin/wpasupplicant/CMakeFiles
+	rm -rf plugin/wpasupplicant/cmake_install.cmake
+	rm -rf plugin/wpasupplicant/install_manifest.txt
+	rm -rf plugin/wpasupplicant/Makefile
+
+	for f in `find $(CURDIR)/debian/ -name "*.in"`; do \
+		rm -f $${f%.in}; \
+	done
+
+	dh_clean 
+
+install: build
+	dh_testdir
+	dh_testroot
+	dh_clean -k 
+	dh_installdirs
+
+	# Add here commands to install the package into debian/wavplayer.
+	$(MAKE) DESTDIR=$(CURDIR)/debian/tmp install
+
+# Build architecture-independent files here.
+binary-indep: build install
+# We have nothing to do by default.
+
+# Build architecture-dependent files here.
+binary-arch: build install
+	dh_testdir
+	dh_testroot
+	dh_installchangelogs 
+	dh_installdocs
+	dh_installexamples
+	dh_install --sourcedir=debian/tmp
+#	dh_installmenu
+#	dh_installdebconf	
+#	dh_installlogrotate
+#	dh_installemacsen
+#	dh_installpam
+#	dh_installmime
+#	dh_python
+#	dh_installinit
+#	dh_installcron
+#	dh_installinfo
+	dh_installman
+	dh_link
+#	dh_strip --dbg-package=
+	dh_compress
+	dh_fixperms
+#	dh_perl
+	dh_makeshlibs
+	dh_installdeb
+	dh_shlibdeps
+	dh_gencontrol
+	dh_md5sums
+	dh_builddeb
+
+binary: binary-indep binary-arch
+.PHONY: build clean binary-indep binary-arch binary install configure

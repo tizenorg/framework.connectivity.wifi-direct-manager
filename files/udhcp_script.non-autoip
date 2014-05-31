@@ -1,0 +1,70 @@
+#!/bin/sh
+
+# udhcpc script edited by Tim Riker <Tim@Rikers.org>
+
+[ -z "$1" ] && echo "Error: should be called from udhcpc" && exit 1
+
+RESOLV_CONF="/etc/resolv.conf"
+TEMP_DHCP_FILE="/tmp/udhcpc_dyn.tmp"
+UDHCPC_LOG="/tmp/udhcpc_log"
+
+env > /tmp/test_env
+
+[ -n "$broadcast" ] && BROADCAST="broadcast $broadcast"
+[ -n "$subnet" ] && NETMASK="netmask $subnet"
+
+case "$1" in
+	deconfig)
+		/sbin/ifconfig $interface 0.0.0.0
+		;;
+
+	renew|bound)
+		/sbin/ifconfig $interface $ip $BROADCAST $NETMASK up
+		echo "$interface $ip $BROADCAST $NETMASK" >> $UDHCPC_LOG
+#		if [ -n "$router" ] ; then
+#			echo "deleting routers" >> $UDHCPC_LOG
+#			while route del default gw 0.0.0.0 dev $interface 2>/dev/null ; do
+#				:
+#			done
+#
+#			for i in $router ; do
+#				echo "router $i" >> $UDHCPC_LOG
+#				route add default gw $i dev $interface
+#			done
+#		fi
+
+		echo -n > $RESOLV_CONF
+		[ -n "$domain" ] && echo search $domain >> $RESOLV_CONF
+		for i in $dns ; do
+			echo "adding dns $i" >> $UDHCPC_LOG
+			echo nameserver $i >> $RESOLV_CONF
+		done
+		echo serveraddr $serverid >> $TEMP_DHCP_FILE
+		echo leasetime $lease >> $TEMP_DHCP_FILE
+
+		if [ -n $router ]; then
+			for i in $router ; do
+# Take the first router
+				echo "route $i"
+				local_gateway=$i
+				break
+			done
+		fi
+		if [ -z $subnet ]; then
+			subnet="255.255.255.0"
+		fi
+		if [ -z $local_gateway ]; then
+			local_gateway="0.0.0.0"
+		fi
+
+		vconftool set -t string memory/private/wifi_direct_manager/p2p_ifname ${interface} -f
+		vconftool set -t string memory/private/wifi_direct_manager/p2p_local_ip ${ip} -f
+		vconftool set -t string memory/private/wifi_direct_manager/p2p_subnet_mask ${subnet} -f
+		vconftool set -t string memory/private/wifi_direct_manager/p2p_gateway ${local_gateway} -f
+		vconftool set -t string memory/private/wifi_direct_manager/dhcpc_server_ip ${serverid} -f
+		
+		echo $i >> $TEMP_DHCP_FILE
+		;;
+esac
+
+exit 0

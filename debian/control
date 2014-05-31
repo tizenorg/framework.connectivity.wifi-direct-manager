@@ -1,0 +1,26 @@
+Source: wifi-direct-manager
+Section: net
+Priority: extra
+Maintainer: Dongwook Lee <dwmax.lee@samsung.com>, Sungsik Jang <sungsik.jang@samsung.com>
+Uploaders: Dongwook Lee <dwmax.lee@samsung.com> Sungsik Jang <sungsik.jang@samsung.com>, Taeksu Shin <taeksu.shin@samsung.com>
+Build-Depends: debhelper (>= 5), libwifi-direct-dev, autotools-dev, libslp-setting-dev, libglib2.0-dev, dlog-dev, libdbus-glib-1-dev, capi-appfw-application-dev
+Standards-Version: 3.7.2
+
+Package: wifi-direct-manager
+Section: net
+Architecture: any 
+Depends: ${shlibs:Depends}, libslp-setting-0, libglib2.0-0
+Description: Wi-Fi Direct manager
+
+Package: wifi-direct-plugin-broadcom
+Section: net
+Architecture: any 
+Depends: ${shlibs:Depends}
+Description: Wi-Fi Direct plugin for Broadcom
+
+Package: wifi-direct-plugin-wpasupplicant
+Section: net
+Architecture: any 
+Depends: ${shlibs:Depends}
+Description: Wi-Fi Direct plugin for wpa supplicant
+

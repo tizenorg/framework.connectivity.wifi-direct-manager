@@ -1,0 +1,9 @@
+@PREFIX@/bin/wfd-manager
+@PREFIX@/etc/wifi-direct/dhcpd.p2p.conf
+@PREFIX@/etc/wifi-direct/dhcpd.wl0.conf
+@PREFIX@/etc/wifi-direct/dhcpd.eth.conf
+@PREFIX@/etc/wifi-direct/udhcp_script.non-autoip
+@PREFIX@/etc/wifi-direct/p2p_suppl.conf
+@PREFIX@/bin/dhcpd-notify.sh
+@PREFIX@/bin/wifi-direct-server.sh
+@PREFIX@/bin/wifi-direct-dhcp.sh

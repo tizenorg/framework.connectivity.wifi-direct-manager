@@ -1,0 +1,9 @@
+<manifest>
+	<request>
+		<domain name="wifi_direct_manager"/>
+	</request>
+	<assign>
+		<filesystem path="/usr/lib/wifi-direct-plugin-wpasupplicant.so" label="_"/>
+		<filesystem path="/usr/sbin/p2p_supplicant" label="_"/>
+	</assign>
+</manifest>
