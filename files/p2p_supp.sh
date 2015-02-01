@@ -2,31 +2,24 @@
 
 start()
 {
-	HARDWARE_MODEL=`grep Hardware /proc/cpuinfo | awk "{print \\$3}"`
-	/bin/echo "Hardware Model=${HARDWARE_MODEL}"
+#	HARDWARE_MODEL=`/bin/grep Hardware /proc/cpuinfo | /bin/awk "{print \\$3}"`
+#	/bin/echo "Hardware Model=${HARDWARE_MODEL}"
 
-	case $HARDWARE_MODEL in
-		"SLP_PQ")	/bin/echo "This is PQ"
-			/usr/sbin/p2p_supplicant -t -B -ddd -Dnl80211 -g/var/run/p2p_global -f/var/log/p2p_supplicant.log
-		;;
-		"U1SLP" | "U1HD")	/bin/echo "This is U1SLP"
-			/usr/sbin/p2p_supplicant -t -B -ddd -Dwext -f/var/log/p2p_supplicant.log
-		;;
-		"SLP7_C210")	/bin/echo "This is C210"
-			/usr/sbin/p2p_supplicant -t -B -ddd -Dwext -f/var/log/p2p_supplicant.log
-		;;
-		"SLP10_C210")
-			/usr/sbin/p2p_supplicant -t -B -ddd -Dwext -f/var/log/p2p_supplicant.log
-		;;
-		*)
-			/usr/sbin/p2p_supplicant -t -B -ddd -Dnl80211 -g/var/run/p2p_global -f/var/log/p2p_supplicant.log
-		;;
-	esac
+	if [ -e /opt/etc/p2p_supp.conf ]; then
+		echo "File exist: /opt/etc/p2p_supp.conf"
+	else
+		echo "File not exist. Reinstall: /opt/etc/p2p_supp.conf"
+		 /bin/cp /usr/etc/wifi-direct/p2p_supp.conf /opt/etc/
+	fi
+	/usr/sbin/p2p_supplicant -t -B -ddd -Dnl80211 -iwlan0 -c/opt/etc/p2p_supp.conf -f/opt/usr/data/network/p2p_supplicant.log
 }
 
 stop()
 {
-	killall p2p_supplicant
+#	HARDWARE_MODEL=`/bin/grep Hardware /proc/cpuinfo | /bin/awk "{print \\$3}"`
+#	/bin/echo "Hardware Model=${HARDWARE_MODEL}"
+
+	/usr/bin/killall p2p_supplicant
 }
 
 case $1 in

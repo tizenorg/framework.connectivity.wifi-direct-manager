@@ -1,6 +1,0 @@
-@PREFIX@/lib/wifi-direct-plugin-broadcom.so
-@PREFIX@/lib/libbcmp2p.so
-@PREFIX@/lib/libbcmp2papp.so
-@PREFIX@/lib/libwpscli.so
-#@PREFIX@/lib/libbcmcrypto.so
-@PREFIX@/lib/libbcmp2psig.so

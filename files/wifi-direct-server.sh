@@ -1,6 +1,6 @@
 #!/bin/sh
 program="wfd-manager"
-target=`ps -eo comm|grep ${program}`
+target=`/bin/ps -eo comm|/bin/grep ${program}`
 
 start_wifi_direct()
 {
@@ -8,7 +8,7 @@ start_wifi_direct()
 		echo "${program} is not running"
 		echo "Launching ${program}"
 		/usr/bin/${program}&
-		sleep 1
+		/bin/sleep 1
 	else
 		echo "${program} is already running"
 	fi
@@ -20,7 +20,7 @@ stop_wifi_direct()
 		echo "${program} is not running"
 	else
 		echo "${program} is running.. Killing it"
-		killall ${program}
+		/usr/bin/killall ${program}
 	fi
 }
 

@@ -1,32 +1,37 @@
 #!/bin/sh
+INTERFACE_NAME="p2p-wlan0-0"
 INTERFACE_PREFIX="p2p"
 TARGET="REDWOOD"
 DEFAULT_IP="192.168.49.1"
+DEFAULT_NET="192.168.49.1/24"
+DEFAULT_BRD="192.168.49.255"
 
-val=`uname -a | grep PQ | wc -l`
+val=`/bin/uname -a | /bin/grep PQ | /usr/bin/wc -l`
 if [ "${val}" -eq "1" ]; then
 	TARGET="PQ"
 fi
 
-val=`uname -a | grep U1HD | wc -l`
+val=`/bin/uname -a | /bin/grep U1HD | /usr/bin/wc -l`
 if [ "${val}" -eq "1" ]; then
 	INTERFACE_PREFIX="wl0"
 	TARGET="U1HD"
 fi
 
-val=`uname -a | grep U1SLP | wc -l`
+val=`/bin/uname -a | /bin/grep U1SLP | /usr/bin/wc -l`
 if [ "${val}" -eq "1" ]; then
 	INTERFACE_PREFIX="wl0"
 	TARGET="U1SLP"
 fi
 
-val=`uname -a | grep i686  | wc -l`
+val=`/bin/uname -a | /bin/grep i686  | /usr/bin/wc -l`
 if [ "${val}" -eq "1" ]; then
 	INTERFACE_PREFIX="eth"
 	TARGET="EMUL"
 fi
 
-interface=`ifconfig|grep ^${INTERFACE_PREFIX}|cut -d" " -f1`
+
+interface=`/sbin/ifconfig|/bin/grep ^${INTERFACE_NAME}|/usr/bin/cut -d" " -f1`
+#interface=`/usr/sbin/ip link|/bin/grep ^${INTERFACE_NAME}|/usr/bin/cut -d":" -f2`
 echo "Target is ${TARGET} and interface ${INTERFACE_PREFIX}: ${interface}."
 
 start_dhcp_server()
@@ -39,20 +44,20 @@ start_dhcp_server()
 	ifconfig ${interface} ${DEFAULT_IP} up
 	udhcpd /usr/etc/wifi-direct/dhcpd.${INTERFACE_PREFIX}.conf -f &
 
-	route=`cat /usr/etc/wifi-direct/dhcpd.${INTERFACE_PREFIX}.conf | grep router | awk '{print $3}'`
+	route=`/bin/cat /usr/etc/wifi-direct/dhcpd.${INTERFACE_PREFIX}.conf | /bin/grep router | /bin/awk '{print $3}'`
 	if [ -z $route ]; then
 		route="192.168.49.1"
 	fi
-	subnet=`cat /usr/etc/wifi-direct/dhcpd.${INTERFACE_PREFIX}.conf | grep subnet | awk '{print $3}'`
+	subnet=`/bin/cat /usr/etc/wifi-direct/dhcpd.${INTERFACE_PREFIX}.conf | /bin/grep subnet | /bin/awk '{print $3}'`
 
 	if [ -z $subnet ]; then
 		subnet="255.255.255.0"
 	fi
 
-	vconftool set -t string memory/private/wifi_direct_manager/p2p_ifname ${interface} -f
-	vconftool set -t string memory/private/wifi_direct_manager/p2p_local_ip ${DEFAULT_IP} -f
-	vconftool set -t string memory/private/wifi_direct_manager/p2p_subnet_mask ${subnet} -f
-	vconftool set -t string memory/private/wifi_direct_manager/p2p_gateway ${route} -f
+	/usr/bin/vconftool set -t string memory/private/wifi_direct_manager/p2p_ifname ${interface} -f
+	/usr/bin/vconftool set -t string memory/private/wifi_direct_manager/p2p_subnet_mask ${subnet} -f
+	/usr/bin/vconftool set -t string memory/private/wifi_direct_manager/p2p_gateway ${route} -f
+	/usr/bin/vconftool set -t string memory/private/wifi_direct_manager/p2p_local_ip ${DEFAULT_IP} -f
 }
 
 start_dhcp_client()
@@ -61,26 +66,26 @@ start_dhcp_client()
                 echo "interface(${INTERFACE_PREFIX}) is not up"
 		return 0
         fi
-	/usr/bin/udhcpc -i $interface -s /usr/etc/wifi-direct/udhcp_script.non-autoip &
+	/usr/bin/udhcpc -i $interface -s /usr/etc/wifi-direct/udhcp_script.non-autoip -S &
 }
 
 
 stop_dhcp()
 {
-	vconftool set -t string memory/private/wifi_direct_manager/p2p_ifname "" -f
-	vconftool set -t string memory/private/wifi_direct_manager/p2p_local_ip "" -f
-	vconftool set -t string memory/private/wifi_direct_manager/p2p_subnet_mask "" -f
-	vconftool set -t string memory/private/wifi_direct_manager/p2p_gateway "" -f
+	/usr/bin/vconftool set -t string memory/private/wifi_direct_manager/p2p_ifname "" -f
+	/usr/bin/vconftool set -t string memory/private/wifi_direct_manager/p2p_subnet_mask "" -f
+	/usr/bin/vconftool set -t string memory/private/wifi_direct_manager/p2p_gateway "" -f
+	/usr/bin/vconftool set -t string memory/private/wifi_direct_manager/p2p_local_ip "" -f
 
-	killall udhcpc
-	killall udhcpd
-#	ifconfig ${interface} 0.0.0.0
+	/usr/bin/killall /usr/bin/udhcpc
+	/usr/bin/killall /usr/sbin/udhcpd
+#	/sbin/ifconfig ${interface} 0.0.0.0
 }
 
 is_running()
 {
 	program=$1
-	run=`ps -eo comm|grep ${program}`
+	run=`/bin/ps -eo comm|/bin/grep ${program}`
 	if [ "X${run}" == "X" ]; then
 		echo "${program} is not running"
 	else
@@ -90,8 +95,8 @@ is_running()
 
 status_dhcp()
 {
-	is_running udhcpc 
-	is_running udhcpd 
+	is_running /usr/bin/udhcpc
+	is_running /usr/sbin/udhcpd
 }
 
 

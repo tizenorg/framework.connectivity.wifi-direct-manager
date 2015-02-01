@@ -3,32 +3,30 @@ PROJECT(wifi-direct-plugin-wpasupplicant C)
 
 # Set required packages
 INCLUDE(FindPkgConfig)
-pkg_check_modules(pkgs REQUIRED wifi-direct vconf glib-2.0 dbus-1 dbus-glib-1 gthread-2.0 dlog)
-
+pkg_check_modules(pkgs REQUIRED capi-network-wifi-direct glib-2.0 dlog)
 FOREACH(flag ${pkgs_CFLAGS})
-	SET(EXTRA_CFLAGS "${EXTRA_CFLAGS} ${flag} -g -DUSE_DLOG")
+	SET(EXTRA_CFLAGS "${EXTRA_CFLAGS} ${flag}")
 ENDFOREACH(flag)
 
-INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR}/include
-		${CMAKE_SOURCE_DIR}/oem/include
-		${CMAKE_SOURCE_DIR}/src/include)
+INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/oem)
 
-SET(CMAKE_C_FLAGS "${CMAKE_CXX_FLAGS} ${EXTRA_CFLAGS} -Wall")
+SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${EXTRA_CFLAGS} -g -Werror")
 SET(CMAKE_C_FLAGS_DEBUG "-O0 -g")
 SET(CMAKE_C_FLAGS_RELEASE "-O2")
 
-ADD_DEFINITIONS("-DPREFIX=\"${PREFIX}\"")
-
+#IF(TIZEN_WLAN_CONCURRENT_ENABLE)
+#	ADD_DEFINITIONS(-DTIZNE_WLAN_CONCURRENT_ENABLE)
+#ENDIF(TIZEN_WLAN_CONCURRENT_EBABLE)
+#ADD_DEFINITIONS("-DPREFIX=\"${PREFIX}\"")
+#ADD_DEFINITIONS("-DUSE_DLOG")
 
 #EXEC_PROGRAM("${UNAME}" ARGS "-m" OUTPUT_VARIABLE "ARCH")
 SET(ARCH "${ARCHITECTURE}")
 IF("${ARCH}" MATCHES "^arm.*|.*86.*")
 
 	SET(SRCS 
-		src/wifi-direct-plugin.c
-	)
-
-        MESSAGE("Build for Target")
+		wfd-plugin-wpasupplicant.c
+		)
 
 	# library build
 	ADD_LIBRARY(${PROJECT_NAME} SHARED ${SRCS})
@@ -42,10 +40,8 @@ IF("${ARCH}" MATCHES "^arm.*|.*86.*")
 ELSE()
 
 	SET(SRCS 
-		src/wifi-direct-plugin-emul.c
-	)
-
-        MESSAGE("Build for Emulator")
+		wfd-plugin-wpasupplicant-emul.c
+		)
 
 	# library build
 	ADD_LIBRARY(${PROJECT_NAME} SHARED ${SRCS})
@@ -57,4 +53,3 @@ ELSE()
 	INSTALL(TARGETS ${PROJECT_NAME} LIBRARY DESTINATION lib)
 
 ENDIF()
-
