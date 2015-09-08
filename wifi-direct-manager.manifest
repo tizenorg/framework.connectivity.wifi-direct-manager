@@ -1,0 +1,28 @@
+<manifest>
+	<define>
+		<domain name="wifi-direct" policy="restricted" plist="wifi-direct-plugin-wpasupplicant"/>
+                <provide>
+                        <label name="wifi-direct::admin"/>
+                        <label name="wifi-direct::discover"/>
+                        <label name="wifi-direct::info"/>
+                        <label name="wifi-direct::native"/>
+                </provide>
+		<permit>
+			<smack permit="system::use_internet" type="w"/>
+		</permit>
+		<request>
+			<smack request="net-config" type="rw"/>
+			<smack request="security-server::api-privilege-by-pid" type="w"/>
+			<smack request="system::use_internet" type="rw"/>
+		</request>
+	</define>
+	<assign>
+		<filesystem path="/usr/bin/wifi-direct-server.sh" label="_" exec_label="none" />
+		<filesystem path="/usr/bin/wifi-direct-dhcp.sh" label="_" exec_label="none" />
+		<filesystem path="/usr/bin/dhcpd-notify.sh" label="_" exec_label="none" />
+		<filesystem path="/usr/sbin/p2p_supp.sh" label="_" exec_label="none" />
+	</assign>
+	<request>
+		<domain name="wifi-direct"/>
+	</request>
+</manifest>
