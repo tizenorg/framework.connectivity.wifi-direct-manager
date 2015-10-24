@@ -1,12 +1,12 @@
 <manifest>
 	<define>
 		<domain name="wifi-direct" policy="restricted" plist="wifi-direct-plugin-wpasupplicant"/>
-                <provide>
-                        <label name="wifi-direct::admin"/>
-                        <label name="wifi-direct::discover"/>
-                        <label name="wifi-direct::info"/>
-                        <label name="wifi-direct::native"/>
-                </provide>
+			<provide>
+				<label name="wifi-direct::admin"/>
+				<label name="wifi-direct::discover"/>
+				<label name="wifi-direct::info"/>
+				<label name="wifi-direct::native"/>
+			</provide>
 		<permit>
 			<smack permit="system::use_internet" type="w"/>
 		</permit>
@@ -14,6 +14,19 @@
 			<smack request="net-config" type="rw"/>
 			<smack request="security-server::api-privilege-by-pid" type="w"/>
 			<smack request="system::use_internet" type="rw"/>
+			<smack request="dbus" type="rwx"/>
+			<smack request="wpasupplicant" type="rwx"/>
+			<smack request="tizen::vconf::wifidirect" type="rwx"/>
+			<smack request="tizen::vconf::tethering::admin" type="rwx"/>
+			<smack request="tizen::vconf::public::r" type="rwx"/>
+			<smack request="tizen::vconf::platform::r" type="rwx"/>
+			<smack request="tizen::vconf::platform::rw" type="rwx"/>
+			<smack request="tizen::vconf::setting::admin" type="rw"/>
+			<smack request="tizen::vconf::telephony::admin" type="rw"/>
+			<smack request="ui-gadget::client" type="w"/>
+			<smack request="device::app_logging" type="w"/>
+			<smack request="device::sys_logging" type="w"/>
+			<smack request="systemd::no-label" type="r"/>
 		</request>
 	</define>
 	<assign>

@@ -1,24 +1,25 @@
 Name:		wifi-direct-manager
 Summary:	Wi-Fi Direct manger
-Version:	1.2.70
+Version:	1.2.118
 Release:	1
 Group:		System/Network
 License:	Apache-2.0
 Source0:	%{name}-%{version}.tar.gz
 BuildRequires:	pkgconfig(capi-network-wifi-direct)
-BuildRequires:	pkgconfig(dbus-glib-1)
+BuildRequires:	pkgconfig(gio-2.0)
 BuildRequires:	pkgconfig(dlog)
 BuildRequires:	pkgconfig(vconf)
+BuildRequires:  pkgconfig(libnl-2.0)
 BuildRequires:	pkgconfig(dbus-1)
 BuildRequires:	pkgconfig(security-server)
 BuildRequires:	pkgconfig(capi-appfw-application)
 BuildRequires:	cmake
-BuildRequires:  model-build-features
+BuildRequires:	model-build-features
 Requires:	net-tools
 Requires:	sys-assert
 Requires:	tizen-coreutils
-Requires:	toybox-symlinks-udhcpd
-Requires:	toybox-symlinks-udhcpc
+Requires:	toybox-symlinks-dhcpd
+Requires:	toybox-symlinks-dhcp
 Requires(post):	/usr/bin/vconftool
 
 %description
@@ -61,13 +62,30 @@ cmake -DCMAKE_INSTALL_PREFIX=%{_prefix} -DARCHITECTURE=$ARCH \
 	-DTIZEN_TETHERING_ENABLE=0 \
 %endif
 %if "%{?tizen_profile_name}" == "wearable"
-        -DTIZEN_FEATURE_SERVICE_DISCOVERY=0 \
-        -DTIZEN_FEATURE_WIFI_DISPLAY=0 \
-%elseif "%{?tizen_profile_name}" == "mobile"
-        -DTIZEN_FEATURE_SERVICE_DISCOVERY=1 \
-        -DTIZEN_FEATURE_WIFI_DISPLAY=1 \
+	-DTIZEN_FEATURE_SERVICE_DISCOVERY=0 \
+	-DTIZEN_FEATURE_WIFI_DISPLAY=0 \
+%else
+%if "%{?tizen_profile_name}" == "mobile"
+%if "%{?tizen_target_name}" == "Z300H"
+	-DTIZEN_WLAN_BOARD_SPRD=1 \
 %endif
-	.
+	-DTIZEN_FEATURE_SERVICE_DISCOVERY=1 \
+	-DTIZEN_WLAN_CONCURRENT_ENABLE=1 \
+	-DTIZEN_FEATURE_WIFI_DISPLAY=1 \
+	-DTIZEN_FEATURE_DEFAULT_CONNECTION_AGENT=1 \
+	-DCTRL_IFACE_DBUS=1 \
+	-DTIZEN_MOBILE=1 \
+%else
+%if "%{?tizen_profile_name}" == "tv"
+	-DTIZEN_FEATURE_SERVICE_DISCOVERY=1 \
+	-DTIZEN_WLAN_CONCURRENT_ENABLE=1 \
+	-DTIZEN_FEATURE_WIFI_DISPLAY=1 \
+	-DCTRL_IFACE_DBUS=1 \
+	-DTIZEN_TV=1 \
+%endif
+%endif
+%endif
+
 
 make %{?_smp_mflags}
 
@@ -92,20 +110,29 @@ chmod 755 /usr/bin/wifi-direct-server.sh
 chmod 755 /usr/bin/wifi-direct-dhcp.sh
 chmod 755 /usr/sbin/p2p_supp.sh
 
-vconftool set -t int memory/wifi_direct/state 0 -u 5000 -i -f -s system::vconf_network
-vconftool set -t int memory/private/wifi_direct_manager/dhcp_ip_lease 0 -i -f -s wifi_direct_manager
-vconftool set -t string memory/private/wifi_direct_manager/dhcpc_server_ip 0.0.0.0 -u 5000 -i -f
-vconftool set -t string memory/private/wifi_direct_manager/p2p_local_ip 0.0.0.0 -u 5000 -i -f
-vconftool set -t string memory/private/wifi_direct_manager/p2p_subnet_mask 0.0.0.0 -u 5000 -i -f
-vconftool set -t string memory/private/wifi_direct_manager/p2p_gateway 0.0.0.0 -u 5000 -i -f
-vconftool set -t string memory/private/wifi_direct_manager/p2p_ifname 0.0.0.0 -u 5000 -i -f
+vconftool set -t int memory/wifi_direct/state 0 -u 5000 -i -s system::vconf_network
+vconftool set -t int memory/private/wifi_direct_manager/dhcp_ip_lease 0 -i -s wifi_direct_manager
+vconftool set -t string memory/private/wifi_direct_manager/dhcpc_server_ip 0.0.0.0 -u 5000 -i
+vconftool set -t string memory/private/wifi_direct_manager/p2p_local_ip 0.0.0.0 -u 5000 -i
+vconftool set -t string memory/private/wifi_direct_manager/p2p_subnet_mask 0.0.0.0 -u 5000 -i
+vconftool set -t string memory/private/wifi_direct_manager/p2p_gateway 0.0.0.0 -u 5000 -i
+vconftool set -t string memory/private/wifi_direct_manager/p2p_ifname 0.0.0.0 -u 5000 -i
 
-if [ ! -d /opt/var/lib/misc ]; then
-        mkdir -p /opt/var/lib/misc
-fi
+%if "%{?tizen_profile_name}" == "tv"
+	if [ ! -d /opt/var/lib/misc ]; then
+		mkdir -p /opt/var/lib/misc
+	fi
 
-touch /opt/var/lib/misc/udhcpd.leases
-chmod 666 /opt/var/lib/misc/udhcpd.leases
+	touch /opt/var/lib/misc/dhcpd.leases
+	chmod 666 /opt/var/lib/misc/dhcpd.leases
+%else
+	if [ ! -d /var/lib/misc ]; then
+		mkdir -p /var/lib/misc
+	fi
+
+	touch /var/lib/misc/dhcpd.leases
+	chmod 666 /var/lib/misc/dhcpd.leases
+%endif
 
 %postun
 
@@ -117,8 +144,8 @@ chmod 666 /opt/var/lib/misc/udhcpd.leases
 /usr/etc/wifi-direct/dhcpd.p2p.conf
 /usr/etc/wifi-direct/udhcp_script.non-autoip
 /usr/etc/wifi-direct/p2p_supp.conf
-/usr/etc/wifi-direct/ccode.conf
 /opt/etc/p2p_supp.conf
+/usr/etc/wifi-direct/ccode.conf
 /opt/etc/persistent-peer
 %{_bindir}/dhcpd-notify.sh
 %{_bindir}/wifi-direct-server.sh
@@ -130,7 +157,6 @@ chmod 666 /opt/var/lib/misc/udhcpd.leases
 %attr(755,-,-) /usr/etc/wifi-direct/udhcp_script.non-autoip
 %attr(755,-,-) %{_sbindir}/p2p_supp.sh
 %attr(644,-,-) %{_datadir}/license/%{name}
-%attr(755,-,-) %{_sbindir}/p2p_supplicant
 
 %files -n wifi-direct-plugin-wpasupplicant
 %manifest wifi-direct-plugin-wpasupplicant.manifest

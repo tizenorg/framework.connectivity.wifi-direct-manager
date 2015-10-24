@@ -34,7 +34,7 @@
 #define OEM_MACADDR_LEN 6
 #define OEM_IPADDR_LEN 4
 #define OEM_PINSTR_LEN 8
-#define OEM_PASS_PHRASE_LEN 8
+#define OEM_PASS_PHRASE_LEN 64
 #define OEM_DEV_NAME_LEN 32
 #define OEM_IFACE_NAME_LEN 16
 #define OEM_SERVICE_TYPE_LEN 8
@@ -57,6 +57,20 @@ typedef enum {
 } wfd_oem_status_code_e;
 
 typedef enum {
+	WFD_OEM_WPA_STATE_DISCONNECTED,
+	WFD_OEM_WPA_STATE_INTERFACE_DISABLED,
+	WFD_OEM_WPA_STATE_INACTIVE,
+	WFD_OEM_WPA_STATE_SCANNING,
+	WFD_OEM_WPA_STATE_AUTHENTICATING,
+	WFD_OEM_WPA_STATE_ASSOCIATING,
+	WFD_OEM_WPA_STATE_ASSOCIATED,
+	WFD_OEM_WPA_STATE_4WAY_HANDSHAKE,
+	WFD_OEM_WPA_STATE_GROUP_HANDSHAKE,
+	WFD_OEM_WPA_STATE_COMPLETED,
+	WFD_OEM_WPA_STATE_MAX,
+} ws_wpa_state_type_e;
+
+typedef enum {
 	WFD_OEM_EVENT_NONE,
 	WFD_OEM_EVENT_DEACTIVATED,
 	WFD_OEM_EVENT_PEER_FOUND,
@@ -64,39 +78,38 @@ typedef enum {
 	WFD_OEM_EVENT_DISCOVERY_FINISHED,
 
 	WFD_OEM_EVENT_PROV_DISC_REQ,	// 5
-	WFD_OEM_EVENT_PROV_DISC_DISPLAY,
-	WFD_OEM_EVENT_PROV_DISC_KEYPAD,
 	WFD_OEM_EVENT_PROV_DISC_RESP,
 	WFD_OEM_EVENT_PROV_DISC_FAIL,
 
-	WFD_OEM_EVENT_GO_NEG_REQ,	// 10
+	WFD_OEM_EVENT_GO_NEG_REQ,
 	WFD_OEM_EVENT_GO_NEG_FAIL,
-	WFD_OEM_EVENT_GO_NEG_DONE,
+	WFD_OEM_EVENT_GO_NEG_DONE,	// 10
 	WFD_OEM_EVENT_WPS_FAIL,
 	WFD_OEM_EVENT_WPS_DONE,
-	WFD_OEM_EVENT_KEY_NEG_FAIL,	// 15
+	WFD_OEM_EVENT_KEY_NEG_FAIL,
 	WFD_OEM_EVENT_KEY_NEG_DONE,
 
-	WFD_OEM_EVENT_CONN_FAIL,
+	WFD_OEM_EVENT_CONN_FAIL,	// 15
 	WFD_OEM_EVENT_CONN_DONE,
 
 	WFD_OEM_EVENT_GROUP_CREATED,
-	WFD_OEM_EVENT_GROUP_DESTROYED,	// 20
+	WFD_OEM_EVENT_GROUP_DESTROYED,
 
 	WFD_OEM_EVENT_INVITATION_REQ,
-	WFD_OEM_EVENT_INVITATION_RES,
+	WFD_OEM_EVENT_INVITATION_RES,	// 20
 	WFD_OEM_EVENT_STA_CONNECTED,
 	WFD_OEM_EVENT_STA_DISCONNECTED,
 
-	WFD_OEM_EVENT_CONNECTED,	// 25
+	WFD_OEM_EVENT_CONNECTED,
 	WFD_OEM_EVENT_DISCONNECTED,
+
+	WFD_OEM_EVENT_TERMINATING,	// 25
 
 #ifdef TIZEN_FEATURE_SERVICE_DISCOVERY
 	WFD_OEM_EVENT_SERV_DISC_RESP,
 	WFD_OEM_EVENT_SERV_DISC_STARTED,
 #endif /* TIZEN_FEATURE_SERVICE_DISCOVERY */
 
-	WFD_OEM_EVENT_TERMINATING,
 	WFD_OEM_EVENT_MAX,
 } wfd_oem_event_e;
 
@@ -135,7 +148,7 @@ typedef struct {
 	int group_flags;
 	int wps_mode;
 #ifdef TIZEN_FEATURE_WIFI_DISPLAY
-	wfd_oem_display_s *display;
+	wfd_oem_display_s display;
 #endif /* TIZEN_FEATURE_WIFI_DISPLAY */
 } wfd_oem_device_s;
 
@@ -150,21 +163,27 @@ typedef struct {
 	int group_flags;
 	int dev_role;
 #ifdef TIZEN_FEATURE_WIFI_DISPLAY
-	wfd_oem_display_s *display;
+	wfd_oem_display_s display;
 #endif /* TIZEN_FEATURE_WIFI_DISPLAY */
 	unsigned char p2p_go_addr[OEM_MACADDR_LEN];
 } wfd_oem_dev_data_s;
 
 typedef struct {
+	char ssid[OEM_DEV_NAME_LEN+1];
+	unsigned char peer_device_addr[OEM_MACADDR_LEN];
 	unsigned char peer_intf_addr[OEM_MACADDR_LEN];
+	int persistent_group;
 	int wps_mode;
 	int status;
 	int error;
 } wfd_oem_conn_data_s;
 
 typedef struct {
+	unsigned char sa[OEM_MACADDR_LEN];
 	unsigned char go_dev_addr[OEM_MACADDR_LEN];
 	unsigned char bssid[OEM_MACADDR_LEN];
+	int persistent_id;
+	int oper_freq;
 	int listen;
 	int status;
 } wfd_oem_invite_data_s;
@@ -174,6 +193,9 @@ typedef struct {
 	int freq;
 	char pass[OEM_PASS_PHRASE_LEN+1];
 	unsigned char go_dev_addr[OEM_MACADDR_LEN];
+	unsigned char ip_addr[OEM_IPADDR_LEN];
+	unsigned char ip_addr_mask[OEM_IPADDR_LEN];
+	unsigned char ip_addr_go[OEM_IPADDR_LEN];
 } wfd_oem_group_data_s;
 
 #ifdef TIZEN_FEATURE_SERVICE_DISCOVERY
@@ -199,6 +221,7 @@ typedef struct {
 	int event_id;
 	unsigned char dev_addr[OEM_MACADDR_LEN];	// device address
 	unsigned char intf_addr[OEM_MACADDR_LEN];
+	unsigned char ip_addr_peer[OEM_IPADDR_LEN];
 	int wps_mode;
 	char wps_pin[OEM_PINSTR_LEN+1];	// just for DISPLAY
 	char ifname[OEM_IFACE_NAME_LEN+1];
@@ -277,6 +300,21 @@ typedef struct {
 	unsigned char go_dev_addr[OEM_MACADDR_LEN];
 } wfd_oem_invite_param_s;
 
+typedef enum {
+	WFD_OEM_CONFIG_ATTR_STR_DEVICE_NAME,
+	WFD_OEM_CONFIG_ATTR_STR_SSID_POSTFIX,
+	WFD_OEM_CONFIG_ATTR_STR_COUNTRY,
+	WFD_OEM_CONFIG_ATTR_NUM_GO_INTENT,
+	WFD_OEM_CONFIG_ATTR_NUM_LISTEN_FREQ,
+	WFD_OEM_CONFIG_ATTR_NUM_OPER_FREQ,
+	WFD_OEM_CONFIG_ATTR_NUM_PREF_FREQ,
+	WFD_OEM_CONFIG_ATTR_NUM_PERSIST_RECONN,
+	WFD_OEM_CONFIG_ATTR_NUM_WIFI_DISPLAY,
+	WFD_OEM_CONFIG_ATTR_NUM_P2P_DISABLED,
+	WFD_OEM_CONFIG_ATTR_NUM_MAX_STA,
+	WFD_OEM_CONFIG_ATTR_LIMIT = WFD_OEM_CONFIG_ATTR_NUM_MAX_STA,
+} wfd_oem_conf_attr_e;
+
 #ifdef TIZEN_FEATURE_SERVICE_DISCOVERY
 typedef enum {
 	WFD_OEM_SERVICE_TYPE_ALL,
@@ -284,8 +322,6 @@ typedef enum {
 	WFD_OEM_SERVICE_TYPE_UPNP,
 	WFD_OEM_SERVICE_TYPE_WS_DISCOVERY,
 	WFD_OEM_SERVICE_TYPE_WIFI_DISPLAY,
-	WFD_OEM_SERVICE_TYPE_BT_ADDR,
-	WFD_OEM_SERVICE_TYPE_CONTACT_INFO,
 	WFD_OEM_SERVICE_TYPE_VENDOR = 0xff,
 } wfd_oem_service_type_e;
 
@@ -325,7 +361,7 @@ typedef struct {
 			char *data2;
 		} vendor;
 	} data;
-} wfd_oem_new_service_s;	
+} wfd_oem_new_service_s;
 #endif /* TIZEN_FEATURE_SERVICE_DISCOVERY */
 
 typedef struct
@@ -359,9 +395,9 @@ typedef struct _wfd_oem_ops_s {
 	int (*wps_cancel) (void);
 	int (*get_pin) (char *pin);
 	int (*set_pin) (char *pin);
-//	int (*generate_pin) (char *pin);
+	int (*generate_pin) (char **pin);
 	int (*get_supported_wps_mode) (int *wps_mode);
-	int (*create_group) (int persistent, int freq);
+	int (*create_group) (int persistent, int freq, const char *passphrase);
 	int (*destroy_group) (const char *ifname);
 	int (*invite) (unsigned char *peer_addr, wfd_oem_invite_param_s *param);
 
@@ -380,8 +416,6 @@ typedef struct _wfd_oem_ops_s {
 	int (*set_persistent_reconnect) (unsigned char *bssid, int reconnect);
 
 #ifdef TIZEN_FEATURE_SERVICE_DISCOVERY
-	int (*register_local_service) (int service_type, char *value);
-	int (*deregister_local_service) (int service_type);
 	int (*start_service_discovery) (unsigned char mac_addr[6], int service_type);
 	int (*cancel_service_discovery) (unsigned char mac_addr[6], int service_type);
 
@@ -393,6 +427,7 @@ typedef struct _wfd_oem_ops_s {
 
 #ifdef TIZEN_FEATURE_WIFI_DISPLAY
 	int (*miracast_init) (int enable);
+	int (*set_display) (wfd_oem_display_s *wifi_display);
 #endif /* TIZEN_FEATURE_WIFI_DISPLAY */
 
 	int (*refresh) (void);
@@ -420,9 +455,9 @@ int wfd_oem_enrollee_start(wfd_oem_ops_s *ops, unsigned char *peer_addr, int wps
 int wfd_oem_wps_cancel(wfd_oem_ops_s *ops);
 int wfd_oem_get_pin(wfd_oem_ops_s *ops, char *pin);
 int wfd_oem_set_pin(wfd_oem_ops_s *ops, char *pin);
-//int wfd_oem_generate_pin(wfd_oem_ops_s *ops, char *pin);
+int wfd_oem_generate_pin(wfd_oem_ops_s *ops, char **pin);
 int wfd_oem_get_supported_wps_mode(wfd_oem_ops_s *ops, int *wps_mode);
-int wfd_oem_create_group(wfd_oem_ops_s *ops, int persistent, int freq);
+int wfd_oem_create_group(wfd_oem_ops_s *ops, int persistent, int freq, const char *passphrase);
 int wfd_oem_destroy_group(wfd_oem_ops_s *ops, const char *ifname);
 int wfd_oem_invite(wfd_oem_ops_s *ops, unsigned char *peer_addr, wfd_oem_invite_param_s *param);
 
@@ -440,8 +475,6 @@ int wfd_oem_remove_persistent_group(wfd_oem_ops_s *ops, char *ssid, unsigned cha
 int wfd_oem_set_persistent_reconnect(wfd_oem_ops_s *ops, unsigned char *bssid, int reconnect);
 
 #ifdef TIZEN_FEATURE_SERVICE_DISCOVERY
-int wfd_oem_register_local_service(wfd_oem_ops_s *ops, int service_type, char *value);
-int wfd_oem_deregister_local_service(wfd_oem_ops_s *ops, int service_type);
 int wfd_oem_start_service_discovery(wfd_oem_ops_s *ops, unsigned char *peer_addr, int service_type);
 int wfd_oem_cancel_service_discovery(wfd_oem_ops_s *ops, unsigned char *peer_addr, int service_type);
 
@@ -453,6 +486,7 @@ int wfd_oem_serv_disc_stop(wfd_oem_ops_s *ops, int handle);
 
 #ifdef TIZEN_FEATURE_WIFI_DISPLAY
 int wfd_oem_miracast_init(wfd_oem_ops_s *ops, int enable);
+int wfd_oem_set_display(wfd_oem_ops_s *ops, wfd_oem_display_s *wifi_display);
 #endif /* TIZEN_FEATURE_WIFI_DISPLAY */
 
 int wfd_oem_refresh(wfd_oem_ops_s *ops);

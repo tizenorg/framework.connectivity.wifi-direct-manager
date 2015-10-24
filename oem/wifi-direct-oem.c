@@ -28,7 +28,6 @@
 #include <stdio.h>
 
 #include <glib.h>
-
 #include "wifi-direct-oem.h"
 
 int wfd_oem_init(wfd_oem_ops_s *ops, wfd_oem_event_cb event_callback, void *user_data)
@@ -194,7 +193,15 @@ int wfd_oem_set_pin(wfd_oem_ops_s *ops, char *pin)
 
 	return ops->set_pin(pin);
 }
-//int wfd_oem_generate_pin(char *pin)
+
+int wfd_oem_generate_pin(wfd_oem_ops_s *ops, char **pin)
+{
+	if (!ops || !ops->generate_pin) {
+		return -1;
+	}
+
+	return ops->generate_pin(pin);
+}
 int wfd_oem_get_supported_wps_mode(wfd_oem_ops_s *ops, int *wps_mode)
 {
 	if (!ops || !ops->get_supported_wps_mode) {
@@ -204,13 +211,13 @@ int wfd_oem_get_supported_wps_mode(wfd_oem_ops_s *ops, int *wps_mode)
 	return ops->get_supported_wps_mode(wps_mode);
 }
 
-int wfd_oem_create_group(wfd_oem_ops_s *ops, int persistent, int freq)
+int wfd_oem_create_group(wfd_oem_ops_s *ops, int persistent, int freq, const char *passphrase)
 {
 	if (!ops || !ops->create_group) {
 		return -1;
 	}
 
-	return ops->create_group(persistent, freq);
+	return ops->create_group(persistent, freq, passphrase);
 }
 
 int wfd_oem_destroy_group(wfd_oem_ops_s *ops, const char *ifname)
@@ -359,24 +366,6 @@ int wfd_oem_set_persistent_reconnect(wfd_oem_ops_s *ops, unsigned char *bssid, i
 }
 
 #ifdef TIZEN_FEATURE_SERVICE_DISCOVERY
-int wfd_oem_register_local_service(wfd_oem_ops_s *ops, int service_type, char *value)
-{
-	if (!ops || !ops->register_local_service) {
-		return -1;
-	}
-
-	return ops->register_local_service(service_type, value);
-}
-
-int wfd_oem_deregister_local_service(wfd_oem_ops_s *ops, int service_type)
-{
-	if (!ops || !ops->deregister_local_service) {
-		return -1;
-	}
-
-	return ops->deregister_local_service(service_type);
-}
-
 int wfd_oem_start_service_discovery(wfd_oem_ops_s *ops, unsigned char *peer_addr, int service_type)
 {
 	if (!ops || !ops->start_service_discovery) {
@@ -441,6 +430,16 @@ int wfd_oem_miracast_init(wfd_oem_ops_s *ops, int enable)
 
 	return ops->miracast_init(enable);
 }
+
+int wfd_oem_set_display(wfd_oem_ops_s *ops, wfd_oem_display_s *wifi_display)
+{
+	if (!ops || !ops->set_display) {
+		return -1;
+	}
+
+	return ops->set_display(wifi_display);
+}
+
 #endif /* TIZEN_FEATURE_WIFI_DISPLAY */
 
 int wfd_oem_refresh(wfd_oem_ops_s *ops)

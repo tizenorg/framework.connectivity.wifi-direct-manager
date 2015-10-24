@@ -47,12 +47,13 @@ typedef struct {
 	int freq;		// MHz
 	GList *members;
 	int member_count;
+	char passphrase[PASSPHRASE_LEN_MAX + 1];
 } wfd_group_s;
 
 
-wfd_group_s *wfd_create_group(void *data, char *ifname, int role, unsigned char *go_dev_addr);
+wfd_group_s *wfd_create_group(void *data, wfd_oem_event_s *group_info);
 wfd_group_s *wfd_create_pending_group(void *data, unsigned char * bssid);
-int wfd_group_complete(void *data, char *ifname, int role, unsigned char *go_dev_addr);
+int wfd_group_complete(void *data, wfd_oem_event_s *group_info);
 int wfd_destroy_group(void * data, char *ifname);
 int wfd_group_add_member(wfd_group_s *group, unsigned char *addr);
 int wfd_group_remove_member(wfd_group_s *group, unsigned char *addr);

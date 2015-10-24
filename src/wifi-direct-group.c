@@ -44,13 +44,20 @@
 #include "wifi-direct-client.h"
 
 // Check the group instance which has same interface name, before using this function
-wfd_group_s *wfd_create_group(void *data, char *ifname, int role, unsigned char *go_dev_addr)
+wfd_group_s *wfd_create_group(void *data, wfd_oem_event_s *group_info)
 {
 	__WDS_LOG_FUNC_ENTER__;
 	wfd_group_s *group = NULL;
 	wfd_manager_s *manager = (wfd_manager_s*) data;
 
-	if (!manager || !ifname || !go_dev_addr) {
+	if (!manager || !group_info) {
+		WDS_LOGE("Invalid parameter");
+		__WDS_LOG_FUNC_EXIT__;
+		return NULL;
+	}
+	wfd_oem_group_data_s *edata = (wfd_oem_group_data_s *)group_info->edata;
+
+	if (!edata) {
 		WDS_LOGE("Invalid parameter");
 		__WDS_LOG_FUNC_EXIT__;
 		return NULL;
@@ -71,11 +78,19 @@ wfd_group_s *wfd_create_group(void *data, char *ifname, int role, unsigned char 
 		return NULL;
 	}
 
-	memcpy(group->ifname, ifname, IFACE_NAME_LEN);
+	memcpy(group->ifname, group_info->ifname, IFACE_NAME_LEN);
 	group->ifname[IFACE_NAME_LEN] = '\0';
-	group->role = role;
-	memcpy(group->go_dev_addr, go_dev_addr, MACADDR_LEN);
+	group->role = group_info->dev_role;
+	memcpy(group->go_dev_addr, edata->go_dev_addr, MACADDR_LEN);
 	group->pending = 0;
+
+	g_strlcpy(group->ssid, edata->ssid, DEV_NAME_LEN + 1);
+	g_strlcpy(group->passphrase, edata->pass, PASSPHRASE_LEN_MAX + 1);
+	memset(manager->local->passphrase, 0x0, PASSPHRASE_LEN_MAX + 1);
+	group->freq = edata->freq;
+
+	manager->group = group;
+	manager->local->dev_role = group_info->dev_role;
 
 	wfd_util_dhcps_start();
 	WDS_LOGD("Role is Group Owner. DHCP Server started");
@@ -105,7 +120,7 @@ wfd_group_s *wfd_create_pending_group(void *data, unsigned char * bssid)
 	}
 
 	errno = 0;
-	group = (wfd_group_s*) calloc(1, sizeof(wfd_group_s));
+	group = (wfd_group_s*) g_try_malloc0(sizeof(wfd_group_s));
 	if (!group) {
 		WDS_LOGE("Failed to allocate memory for group. [%s]", strerror(errno));
 		__WDS_LOG_FUNC_EXIT__;
@@ -119,14 +134,22 @@ wfd_group_s *wfd_create_pending_group(void *data, unsigned char * bssid)
 	return group;
 }
 
-int wfd_group_complete(void *data, char *ifname, int role, unsigned char *go_dev_addr)
+int wfd_group_complete(void *data, wfd_oem_event_s *group_info)
 {
 	__WDS_LOG_FUNC_ENTER__;
 	wfd_manager_s *manager = (wfd_manager_s*) data;
+	wfd_session_s *session = NULL;
 	wfd_group_s *group = NULL;
 	wfd_device_s *peer = NULL;
 
-	if (!manager || !ifname || !go_dev_addr) {
+	if (!manager || !group_info) {
+		WDS_LOGE("Invalid parameter");
+		__WDS_LOG_FUNC_EXIT__;
+		return -1;
+	}
+	wfd_oem_group_data_s *edata = (wfd_oem_group_data_s *)group_info->edata;
+
+	if (!edata) {
 		WDS_LOGE("Invalid parameter");
 		__WDS_LOG_FUNC_EXIT__;
 		return -1;
@@ -144,15 +167,23 @@ int wfd_group_complete(void *data, char *ifname, int role, unsigned char *go_dev
 		return -1;
 	}
 
-	memcpy(group->ifname, ifname, IFACE_NAME_LEN);
-	group->ifname[IFACE_NAME_LEN] = '\0';
-	group->role = role;
-	memcpy(group->go_dev_addr, go_dev_addr, MACADDR_LEN);
+	g_strlcpy(group->ifname, group_info->ifname, IFACE_NAME_LEN + 1);
+	group->role = group_info->dev_role;
+	memcpy(group->go_dev_addr, edata->go_dev_addr, MACADDR_LEN);
 	group->pending = 0;
 
-	peer = wfd_session_get_peer(manager->session);
+	g_strlcpy(group->ssid, edata->ssid, DEV_NAME_LEN + 1);
+	g_strlcpy(group->passphrase, edata->pass, PASSPHRASE_LEN_MAX + 1);
+	memset(manager->local->passphrase, 0x0, PASSPHRASE_LEN_MAX + 1);
+	group->freq = edata->freq;
+
+	manager->local->dev_role = group_info->dev_role;
+
+	session = manager->session;
+	peer = wfd_session_get_peer(session);
 	if (!peer && !(group->flags & WFD_GROUP_FLAG_AUTONOMOUS)) {
-		WDS_SECLOG("Failed to find peer by device address[" MACSTR "]", go_dev_addr);
+		WDS_LOGD("Failed to find peer by device address[" MACSECSTR "]",
+						MAC2SECSTR(edata->go_dev_addr));
 		return -1;
 	}
 
@@ -160,6 +191,24 @@ int wfd_group_complete(void *data, char *ifname, int role, unsigned char *go_dev
 		wfd_util_dhcps_start();
 		WDS_LOGD("Role is Group Owner. DHCP Server started");
 	} else {
+#ifdef CTRL_IFACE_DBUS
+		WDS_LOGD("Role is Group Client.complete session and add peer to member");
+		if (peer) {
+			memcpy(peer->intf_addr, group->go_dev_addr, MACADDR_LEN);
+			wfd_group_add_member(group, peer->dev_addr);
+			session->state = SESSION_STATE_COMPLETED;
+			/* memcpy(peer->intf_addr, event->intf_addr, MACADDR_LEN); */
+			peer->state = WFD_PEER_STATE_CONNECTED;
+			if(edata->ip_addr[3] && edata->ip_addr_go[3]) {
+				peer->ip_type = WFD_IP_TYPE_OVER_EAPOL;
+				memcpy(peer->client_ip_addr, edata->ip_addr, IPADDR_LEN);
+				WDS_LOGE("Peer's client IP [" IPSTR "]", IP2STR((char*) &peer->client_ip_addr));
+				memcpy(peer->go_ip_addr, edata->ip_addr_go, IPADDR_LEN);
+				WDS_LOGE("Peer's GO IP [" IPSTR "]", IP2STR((char*) &peer->go_ip_addr));
+			}
+		}
+		if(peer && peer->ip_type != WFD_IP_TYPE_OVER_EAPOL)
+#endif /* CTRL_IFACE_DBUS */
 		wfd_util_dhcpc_start(peer);
 	}
 
@@ -200,17 +249,18 @@ int wfd_destroy_group(void *data, char *ifname)
 	while(temp && count < group->member_count) {
 		member = temp->data;
 		WDS_LOGD("%dth member[%s] will be removed", count, member->dev_name);
-#ifdef TIZEN_FEATURE_WIFI_DISPLAY
-		if (member->display)
-			free(member->display);
-#endif /* TIZEN_FEATURE_WIFI_DISPLAY */
-		free(member);
+		g_free(member);
+		member = NULL;
 		temp = g_list_next(temp);
 		count++;
 	}
-	g_list_free(group->members);
 
-	free(group);
+	if (group->members) {
+		g_list_free(group->members);
+		group->members = NULL;
+	}
+
+	g_free(group);
 
 	manager->local->dev_role = WFD_DEV_ROLE_NONE;
 	__WDS_LOG_FUNC_EXIT__;
@@ -244,7 +294,7 @@ int wfd_group_is_autonomous(wfd_group_s *group)
 	}
 
 	__WDS_LOG_FUNC_EXIT__;
-	return group->flags & WFD_GROUP_FLAG_AUTONOMOUS;;
+	return ((group->flags & WFD_GROUP_FLAG_AUTONOMOUS) == WFD_GROUP_FLAG_AUTONOMOUS);
 }
 
 #if 0
@@ -365,13 +415,14 @@ int wfd_group_remove_member(wfd_group_s *group, unsigned char *addr)
 
 	member = wfd_group_find_member_by_addr(group, addr);
 	if (!member) {
-		WDS_SECLOG("Member not found [MAC: " MACSTR "]", addr);
+		WDS_LOGD("Member not found [MAC: " MACSECSTR "]",
+						MAC2SECSTR(addr));
 		__WDS_LOG_FUNC_EXIT__;
 		return -1;
 	}
 
 	group->members = g_list_remove(group->members, member);
-	free(member);
+	g_free(member);
 	group->member_count--;
 
 	__WDS_LOG_FUNC_EXIT__;

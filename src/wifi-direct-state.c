@@ -26,7 +26,9 @@
  */
 
 #include <stdio.h>
+
 #include <glib.h>
+
 #include <wifi-direct.h>
 
 #include "wifi-direct-ipc.h"

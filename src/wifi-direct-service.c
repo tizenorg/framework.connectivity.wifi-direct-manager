@@ -1,7 +1,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
 #include <glib.h>
+
 #include <wifi-direct.h>
 
 #include "wifi-direct-ipc.h"
@@ -32,7 +34,7 @@ int wfd_service_add(GList **services, int type, char *info_str, int *service_id)
 		return -1;
 	}
 
-	service = (wfd_service_s*) calloc(1, sizeof(wfd_service_s));
+	service = (wfd_service_s*) g_try_malloc0(sizeof(wfd_service_s));
 	if (!service) {
 		WDS_LOGE("Failed to allocate memory for service");
 		return -1;
@@ -41,17 +43,17 @@ int wfd_service_add(GList **services, int type, char *info_str, int *service_id)
 	service->type = type;
 	service->id = (int) &service;
 
-	info1 = strndup(info_str, strlen(info_str));
+	info1 = g_strndup(info_str, strlen(info_str));
 	if(info1 == NULL) {
 		WDS_LOGE("Failed to allocate memory for service");
-		free(service);
+		g_free(service);
 		return -1;
 	}
 	sep = strchr(info1, '|');
 	if(sep == NULL) {
 		WDS_LOGE("Failed to find delimiter");
-		free(info1);
-		free(service);
+		g_free(info1);
+		g_free(service);
 		return -1;
 	}
 
@@ -74,10 +76,9 @@ int wfd_service_add(GList **services, int type, char *info_str, int *service_id)
 		break;
 		case WIFI_DIRECT_SERVICE_TYPE_WS_DISCOVERY:
 		case WIFI_DIRECT_SERVICE_TYPE_WIFI_DISPLAY:
-		case WIFI_DIRECT_SERVICE_TYPE_BT_ADDR:
 			WDS_LOGE("Not supported yet");
-			free(info1);
-			free(service);
+			g_free(info1);
+			g_free(service);
 			return-1;
 		break;
 		case WIFI_DIRECT_SERVICE_TYPE_VENDOR:
@@ -86,9 +87,8 @@ int wfd_service_add(GList **services, int type, char *info_str, int *service_id)
 		break;
 		default:
 			WDS_LOGE("Invalid service type");
-			if(info1)
-				free(info1);
-			free(service);
+			g_free(info1);
+			g_free(service);
 			return-1;
 		break;
 	}
@@ -100,9 +100,8 @@ int wfd_service_add(GList **services, int type, char *info_str, int *service_id)
 	res = wfd_oem_serv_add(manager->oem_ops, (wfd_oem_new_service_s*) service);
 	if (res < 0) {
 		WDS_LOGE("Failed to add service");
-		if(info1)
-			free(info1);
-		free(service);
+		g_free(info1);
+		g_free(service);
 		return -1;
 	}
 
@@ -153,9 +152,8 @@ int wfd_service_del(GList *services, int service_id)
 
 	services = g_list_remove(services, service);
 
-	if(service->str_ptr != NULL)
-		free(service->str_ptr);
-	free(service);
+	g_free(service->str_ptr);
+	g_free(service);
 
 	__WDS_LOG_FUNC_EXIT__;
 	return 0;

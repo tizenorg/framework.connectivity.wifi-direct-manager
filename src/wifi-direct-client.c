@@ -61,7 +61,9 @@ static int _wfd_deregister_client(void *data, int client_id);
 static gboolean wfd_client_process_request(GIOChannel *source,
 									GIOCondition condition,
 									gpointer user_data);
+#if !defined TIZEN_TV
 static int _wfd_check_client_privilege(int client_sock, int cmd);
+#endif
 
 char *wfd_server_print_cmd(wifi_direct_cmd_e cmd)
 {
@@ -142,8 +144,8 @@ char *wfd_server_print_cmd(wifi_direct_cmd_e cmd)
 		return "WIFI_DIRECT_CMD_SET_GO_INTENT";
 	case WIFI_DIRECT_CMD_GET_GO_INTENT:
 		return "WIFI_DIRECT_CMD_GET_GO_INTENT";
-	case WIFI_DIRECT_CMD_GET_DEVICE_MAC:
-		return "WIFI_DIRECT_CMD_GET_DEVICE_MAC";
+	case WIFI_DIRECT_CMD_GET_MAC_ADDR:
+		return "WIFI_DIRECT_CMD_GET_MAC_ADDR";
 	case WIFI_DIRECT_CMD_IS_AUTONOMOUS_GROUP:
 		return "WIFI_DIRECT_CMD_IS_AUTONOMOUS_GROUP";
 	case WIFI_DIRECT_CMD_SET_MAX_CLIENT:
@@ -165,8 +167,8 @@ char *wfd_server_print_cmd(wifi_direct_cmd_e cmd)
 		return "WIFI_DIRECT_CMD_ACTIVATE_PERSISTENT_GROUP";
 	case WIFI_DIRECT_CMD_DEACTIVATE_PERSISTENT_GROUP:
 		return "WIFI_DIRECT_CMD_DEACTIVATE_PERSISTENT_GROUP";
-	case WIFI_DIRECT_CMD_IS_PERSISTENT_GROUP:
-		return "WIFI_DIRECT_CMD_IS_PERSISTENT_GROUP";
+	case WIFI_DIRECT_CMD_IS_PERSISTENT_GROUP_ACTIVATED:
+		return "WIFI_DIRECT_CMD_IS_PERSISTENT_GROUP_ACTIVATED";
 	case WIFI_DIRECT_CMD_GET_PERSISTENT_GROUP_INFO:
 		return "WIFI_DIRECT_CMD_GET_PERSISTENT_GROUP_INFO";
 	case WIFI_DIRECT_CMD_REMOVE_PERSISTENT_GROUP:
@@ -178,6 +180,15 @@ char *wfd_server_print_cmd(wifi_direct_cmd_e cmd)
 		return "WIFI_DIRECT_CMD_SET_DEVICE_NAME";
 	case WIFI_DIRECT_CMD_SET_OEM_LOGLEVEL:
 		return "WIFI_DIRECT_CMD_SET_OEM_LOGLEVEL";
+	case WIFI_DIRECT_CMD_GET_PEER_INFO:
+		return "WIFI_DIRECT_CMD_GET_PEER_INFO";
+
+	case WIFI_DIRECT_CMD_SET_PASSPHRASE:
+		return "WIFI_DIRECT_CMD_SET_PASSPHRASE";
+	case WIFI_DIRECT_CMD_GET_PASSPHRASE:
+		return "WIFI_DIRECT_CMD_GET_PASSPHRASE";
+	case WIFI_DIRECT_CMD_SET_AUTOCONNECTION_PEER:
+		return "WIFI_DIRECT_CMD_SET_AUTOCONNECTION_PEER";
 
 #ifdef TIZEN_FEATURE_SERVICE_DISCOVERY
 	case WIFI_DIRECT_CMD_REGISTER_LOCAL_SERVICE:
@@ -197,10 +208,26 @@ char *wfd_server_print_cmd(wifi_direct_cmd_e cmd)
 #ifdef TIZEN_FEATURE_WIFI_DISPLAY
 	case WIFI_DIRECT_CMD_INIT_MIRACAST:
 		return "WIFI_DIRECT_CMD_INIT_MIRACAST";
+	case WIFI_DIRECT_CMD_INIT_DISPLAY:
+		return "WIFI_DIRECT_CMD_INIT_DISPLAY";
+	case WIFI_DIRECT_CMD_DEINIT_DISPLAY:
+		return "WIFI_DIRECT_CMD_DEINIT_DISPLAY";
+	case WIFI_DIRECT_CMD_SET_DISPLAY:
+		return "WIFI_DIRECT_CMD_SET_DISPLAY";
+	case WIFI_DIRECT_CMD_SET_DISPLAY_AVAILABILITY:
+		return "WIFI_DIRECT_CMD_SET_DISPLAY_AVAILABILITY";
+	case WIFI_DIRECT_CMD_GET_PEER_DISPLAY_TYPE:
+		return "WIFI_DIRECT_CMD_GET_PEER_DISPLAY_TYPE";
+	case WIFI_DIRECT_CMD_GET_PEER_DISPLAY_AVAILABILITY:
+		return "WIFI_DIRECT_CMD_GET_PEER_DISPLAY_AVAILABILITY";
+	case WIFI_DIRECT_CMD_GET_PEER_DISPLAY_HDCP:
+		return "WIFI_DIRECT_CMD_GET_PEER_DISPLAY_HDCP";
+	case WIFI_DIRECT_CMD_GET_PEER_DISPLAY_PORT:
+		return "WIFI_DIRECT_CMD_GET_PEER_DISPLAY_PORT";
+	case WIFI_DIRECT_CMD_GET_PEER_DISPLAY_THROUGHPUT:
+		return "WIFI_DIRECT_CMD_GET_PEER_DISPLAY_THROUGHPUT";
 #endif /* TIZEN_FEATURE_WIFI_DISPLAY */
 
-	case WIFI_DIRECT_CMD_GET_PEER_INFO:
-		return "WIFI_DIRECT_CMD_GET_PEER_INFO";
 	default:
 		return "WIFI_DIRECT_CMD_INVALID";
 
@@ -427,12 +454,14 @@ static int _wfd_register_client(void *data, int sock)
 			res = WIFI_DIRECT_ERROR_NOT_PERMITTED; // WIFI_DIRECT_ERROR_ALREADY_EXIST
 			goto send_response;
 		}
-
+/*FixMe: Tizen TV Plardorm return the "ACCESS DENIED" error
+Ignore the check for now*/
+#if !defined TIZEN_TV
 		if (_wfd_check_client_privilege(sock, req.cmd) != WIFI_DIRECT_ERROR_NONE) {
 			rsp.result = WIFI_DIRECT_ERROR_AUTH_FAILED;
 			goto done;
 		}
-
+#endif
 		client = (wfd_client_s*) g_try_malloc0(sizeof(wfd_client_s));
 		if (!client) {
 			WDS_LOGE("Failed to allocate memory");
@@ -462,10 +491,14 @@ static int _wfd_register_client(void *data, int sock)
 			goto done;
 		}
 
+	/*FixMe: Tizen TV Plardorm return the "ACCESS DENIED" error
+	Ignore the check for now*/
+#if !defined TIZEN_TV
 		if (_wfd_check_client_privilege(sock, req.cmd) != WIFI_DIRECT_ERROR_NONE) {
 			res = WIFI_DIRECT_ERROR_AUTH_FAILED;
 			goto done;
 		}
+#endif
 		client->asock = sock;
 		WDS_LOGD("Async socket[%d] for New client[%d] added.", sock, client->client_id);
 		goto done;
@@ -489,28 +522,6 @@ send_response:
 done:
 	__WDS_LOG_FUNC_EXIT__;
 	return 0;
-}
-
-static gboolean _wfd_remove_event_source(gpointer data)
-{
-	__WDS_LOG_FUNC_ENTER__;
-	int source_id = (int) data;
-	int res = 0;
-
-	if (source_id < 0) {
-		WDS_LOGE("Invalid source ID [%d]", source_id);
-		return FALSE;
-	}
-
-	res = g_source_remove(source_id);
-	if (!res) {
-		WDS_LOGE("Failed to remove GSource");
-		return FALSE;
-	}
-	WDS_LOGD("Succeeded to remove GSource");
-
-	__WDS_LOG_FUNC_EXIT__;
-	return FALSE;
 }
 
 static int _wfd_deregister_client(void *data, int client_id)
@@ -540,7 +551,7 @@ static int _wfd_deregister_client(void *data, int client_id)
 	if (client->ssock >= SOCK_FD_MIN)
 		close(client->ssock);
 	client->ssock = -1;
-	g_idle_add((GSourceFunc) _wfd_remove_event_source, (gpointer) client->gsource_id);
+	g_source_remove(client->gsource_id);
 	client->gsource_id = 0;
 
 	g_free(client);
@@ -685,9 +696,11 @@ int wfd_client_handler_deinit(wfd_manager_s *manager)
 	__WDS_LOG_FUNC_ENTER__;
 	GList *temp = NULL;
 	wfd_client_s *client = NULL;
-
-	if (manager->serv_sock >= SOCK_FD_MIN)
+	WDS_LOGD("server socket[%d]", manager->serv_sock);
+	if (manager->serv_sock >= SOCK_FD_MIN) {
 		close(manager->serv_sock);
+		unlink(WFD_SERVER_SOCK_PATH);
+	}
 	manager->serv_sock = -1;
 	g_source_remove(manager->client_handle);
 	manager->client_handle = 0;
@@ -695,24 +708,32 @@ int wfd_client_handler_deinit(wfd_manager_s *manager)
 	temp = g_list_first(manager->clients);
 	while(temp) {
 		client = temp->data;
-		if (client->ssock >= SOCK_FD_MIN)
-			close(client->ssock);
-		client->ssock = -1;
-		if (client->asock >= SOCK_FD_MIN)
-			close(client->asock);
-		client->asock = -1;
-		g_source_remove(client->gsource_id);
-		client->gsource_id = 0;
-		g_free(client);
+		if(client != NULL) {
+			if (client->ssock >= SOCK_FD_MIN)
+				close(client->ssock);
+			client->ssock = -1;
+			if (client->asock >= SOCK_FD_MIN)
+				close(client->asock);
+			client->asock = -1;
+			g_source_remove(client->gsource_id);
+			client->gsource_id = 0;
+			g_free(client);
+		}
 		temp = g_list_next(temp);
 	}
-	g_list_free(manager->clients);
+
+	if (manager->clients) {
+		g_list_free(manager->clients);
+		manager->clients = NULL;
+	}
 
 	manager->client_count = 0;
 	manager->clients = NULL;
 	__WDS_LOG_FUNC_EXIT__;
 	return 0;
 }
+
+#if !defined TIZEN_TV
 static int _wfd_check_client_privilege(int client_sock, int cmd)
 {
 	__WDS_LOG_FUNC_ENTER__;
@@ -733,17 +754,24 @@ static int _wfd_check_client_privilege(int client_sock, int cmd)
 	case WIFI_DIRECT_CMD_DESTROY_GROUP:
 	case WIFI_DIRECT_CMD_ACTIVATE_PERSISTENT_GROUP:
 	case WIFI_DIRECT_CMD_DEACTIVATE_PERSISTENT_GROUP:
+	case WIFI_DIRECT_CMD_IS_PERSISTENT_GROUP_ACTIVATED:
 	case WIFI_DIRECT_CMD_REMOVE_PERSISTENT_GROUP:
 	case WIFI_DIRECT_CMD_SET_GO_INTENT:
 	case WIFI_DIRECT_CMD_GENERATE_WPS_PIN:
 	case WIFI_DIRECT_CMD_SET_WPS_PIN:
 	case WIFI_DIRECT_CMD_SET_DEVICE_NAME:
 	case WIFI_DIRECT_CMD_SET_SSID:
-	case WIFI_DIRECT_CMD_SET_WPA:
 	case WIFI_DIRECT_CMD_SET_MAX_CLIENT:
+	case WIFI_DIRECT_CMD_SET_PASSPHRASE:
+	case WIFI_DIRECT_CMD_SET_AUTOCONNECTION_PEER:
 
 #ifdef TIZEN_FEATURE_WIFI_DISPLAY
 	case WIFI_DIRECT_CMD_INIT_MIRACAST:
+
+	case WIFI_DIRECT_CMD_INIT_DISPLAY:
+	case WIFI_DIRECT_CMD_DEINIT_DISPLAY:
+	case WIFI_DIRECT_CMD_SET_DISPLAY:
+	case WIFI_DIRECT_CMD_SET_DISPLAY_AVAILABILITY:
 #endif /* TIZEN_FEATURE_WIFI_DISPLAY */
 
 #ifdef TIZEN_FEATURE_SERVICE_DISCOVERY
@@ -774,6 +802,7 @@ static int _wfd_check_client_privilege(int client_sock, int cmd)
 	case WIFI_DIRECT_CMD_GET_GO_INTENT:
 	case WIFI_DIRECT_CMD_GET_MAX_CLIENT:
 	case WIFI_DIRECT_CMD_GET_IP_ADDR:
+	case WIFI_DIRECT_CMD_GET_MAC_ADDR:
 	case WIFI_DIRECT_CMD_GET_SUPPORTED_WPS_MODE:
 	case WIFI_DIRECT_CMD_GET_REQ_WPS_MODE:
 	case WIFI_DIRECT_CMD_GET_LOCAL_WPS_MODE:
@@ -786,9 +815,15 @@ static int _wfd_check_client_privilege(int client_sock, int cmd)
 	case WIFI_DIRECT_CMD_IS_GROUPOWNER:
 	case WIFI_DIRECT_CMD_IS_AUTONOMOUS_GROUP:
 	case WIFI_DIRECT_CMD_IS_AUTOCONNECTION_MODE:
-	case WIFI_DIRECT_CMD_IS_PERSISTENT_GROUP:
-	case WIFI_DIRECT_CMD_GET_DEVICE_MAC:
 	case WIFI_DIRECT_CMD_GET_PEER_INFO:
+	case WIFI_DIRECT_CMD_GET_PASSPHRASE:
+#ifdef TIZEN_FEATURE_WIFI_DISPLAY
+	case WIFI_DIRECT_CMD_GET_PEER_DISPLAY_TYPE:
+	case WIFI_DIRECT_CMD_GET_PEER_DISPLAY_AVAILABILITY:
+	case WIFI_DIRECT_CMD_GET_PEER_DISPLAY_HDCP:
+	case WIFI_DIRECT_CMD_GET_PEER_DISPLAY_PORT:
+	case WIFI_DIRECT_CMD_GET_PEER_DISPLAY_THROUGHPUT:
+#endif /* TIZEN_FEATURE_WIFI_DISPLAY */
         ret = security_server_check_privilege_by_sockfd(client_sock, "wifi-direct::info", "r");
 		break;
 	case WIFI_DIRECT_CMD_SET_REQ_WPS_MODE:
@@ -813,6 +848,8 @@ static int _wfd_check_client_privilege(int client_sock, int cmd)
 		return WIFI_DIRECT_ERROR_AUTH_FAILED;
 	}
 }
+#endif
+
 static gboolean wfd_client_process_request(GIOChannel *source,
 									GIOCondition condition,
 									gpointer user_data)
@@ -845,16 +882,21 @@ static gboolean wfd_client_process_request(GIOChannel *source,
 		WDS_LOGE("Client socket busy");
 		return TRUE;
 	}
-	WDS_LOGD("Client request [%d:%s], %d bytes read from socket[%d]", req.cmd, wfd_server_print_cmd(req.cmd), res, sock);
+	WDS_LOGI("Client request [%d:%s], %d bytes read from socket[%d]", req.cmd, wfd_server_print_cmd(req.cmd), res, sock);
 
 	rsp.cmd = req.cmd;
 	rsp.client_id = req.client_id;
 	rsp.result = WIFI_DIRECT_ERROR_NONE;
 
+#if !defined TIZEN_TV
+	/*FixMe: Tizen TV Plardorm return the "ACCESS DENIED" error
+	Ignore the check for now*/
 	if (_wfd_check_client_privilege(sock, req.cmd) != WIFI_DIRECT_ERROR_NONE) {
 		rsp.result = WIFI_DIRECT_ERROR_AUTH_FAILED;
 		goto send_response;
 	}
+#endif
+
 	switch (req.cmd) {
 	case WIFI_DIRECT_CMD_DEREGISTER:	// manager
 		_wfd_send_to_client(sock, (char*) &rsp, sizeof(rsp));
@@ -883,7 +925,7 @@ static gboolean wfd_client_process_request(GIOChannel *source,
 			return FALSE;
 		}
 
-		noti = (wifi_direct_client_noti_s*) calloc(1, sizeof(wifi_direct_client_noti_s));
+		noti = (wifi_direct_client_noti_s*) g_try_malloc0(sizeof(wifi_direct_client_noti_s));
 		noti->event = WIFI_DIRECT_CLI_EVENT_ACTIVATION;
 		noti->error = wfd_manager_activate(manager);
 		goto send_notification;
@@ -901,7 +943,7 @@ static gboolean wfd_client_process_request(GIOChannel *source,
 			return FALSE;
 		}
 
-		noti = (wifi_direct_client_noti_s*) calloc(1, sizeof(wifi_direct_client_noti_s));
+		noti = (wifi_direct_client_noti_s*) g_try_malloc0(sizeof(wifi_direct_client_noti_s));
 		noti->event = WIFI_DIRECT_CLI_EVENT_DEACTIVATION;
 		noti->error = wfd_manager_deactivate(manager);
 		goto send_notification;
@@ -939,7 +981,7 @@ static gboolean wfd_client_process_request(GIOChannel *source,
 			wfd_state_set(manager, WIFI_DIRECT_STATE_DISCOVERING);
 			wfd_util_set_wifi_direct_state(WIFI_DIRECT_STATE_DISCOVERING);
 
-			noti = (wifi_direct_client_noti_s*) calloc(1, sizeof(wifi_direct_client_noti_s));
+			noti = (wifi_direct_client_noti_s*) g_try_malloc0(sizeof(wifi_direct_client_noti_s));
 			if (req.data.int1) {
 				noti->event = WIFI_DIRECT_CLI_EVENT_DISCOVER_START_LISTEN_ONLY;
 				manager->scan_mode = WFD_SCAN_MODE_PASSIVE;
@@ -995,7 +1037,7 @@ static gboolean wfd_client_process_request(GIOChannel *source,
 			wfd_state_set(manager, WIFI_DIRECT_STATE_DISCOVERING);
 			wfd_util_set_wifi_direct_state(WIFI_DIRECT_STATE_DISCOVERING);
 
-			noti = (wifi_direct_client_noti_s*) calloc(1, sizeof(wifi_direct_client_noti_s));
+			noti = (wifi_direct_client_noti_s*) g_try_malloc0(sizeof(wifi_direct_client_noti_s));
 			if (channel == WIFI_DIRECT_DISCOVERY_FULL_SCAN)
 				noti->event = WIFI_DIRECT_CLI_EVENT_DISCOVER_START;
 			else
@@ -1019,7 +1061,7 @@ static gboolean wfd_client_process_request(GIOChannel *source,
 		}
 		WDS_LOGE("Succeeded to stop scan");
 
-		noti = (wifi_direct_client_noti_s*) calloc(1, sizeof(wifi_direct_client_noti_s));
+		noti = (wifi_direct_client_noti_s*) g_try_malloc0(sizeof(wifi_direct_client_noti_s));
 		noti->event = WIFI_DIRECT_CLI_EVENT_DISCOVER_END;
 		noti->error = WIFI_DIRECT_ERROR_NONE;
 		if (manager->local->dev_role == WFD_DEV_ROLE_GO) {
@@ -1077,7 +1119,7 @@ static gboolean wfd_client_process_request(GIOChannel *source,
 			}
 
 			res = wfd_manager_connect(manager, req.data.mac_addr);
-			noti = (wifi_direct_client_noti_s*) calloc(1, sizeof(wifi_direct_client_noti_s));
+			noti = (wifi_direct_client_noti_s*) g_try_malloc0(sizeof(wifi_direct_client_noti_s));
 			if (res < 0) {
 				noti->event = WIFI_DIRECT_CLI_EVENT_CONNECTION_RSP;
 				noti->error = WIFI_DIRECT_ERROR_OPERATION_FAILED;
@@ -1085,7 +1127,7 @@ static gboolean wfd_client_process_request(GIOChannel *source,
 				noti->event = WIFI_DIRECT_CLI_EVENT_CONNECTION_START;
 				noti->error = WIFI_DIRECT_ERROR_NONE;
 			}
-			snprintf(noti->param1, MACSTR_LEN, MACSTR, MAC2STR(req.data.mac_addr));
+			g_snprintf(noti->param1, MACSTR_LEN, MACSTR, MAC2STR(req.data.mac_addr));
 			goto send_notification;
 		}
 		break;
@@ -1111,7 +1153,7 @@ static gboolean wfd_client_process_request(GIOChannel *source,
 			}
 
 			res = wfd_manager_accept_connection(manager, req.data.mac_addr);
-			noti = (wifi_direct_client_noti_s*) calloc(1, sizeof(wifi_direct_client_noti_s));
+			noti = (wifi_direct_client_noti_s*) g_try_malloc0(sizeof(wifi_direct_client_noti_s));
 			if (res < 0) {
 				noti->event = WIFI_DIRECT_CLI_EVENT_CONNECTION_RSP;
 				noti->error = WIFI_DIRECT_ERROR_OPERATION_FAILED;
@@ -1119,7 +1161,7 @@ static gboolean wfd_client_process_request(GIOChannel *source,
 				noti->event = WIFI_DIRECT_CLI_EVENT_CONNECTION_START;
 				noti->error = WIFI_DIRECT_ERROR_NONE;
 			}
-			snprintf(noti->param1, MACSTR_LEN, MACSTR, MAC2STR(req.data.mac_addr));
+			g_snprintf(noti->param1, MACSTR_LEN, MACSTR, MAC2STR(req.data.mac_addr));
 			goto send_notification;
 		}
 		break;
@@ -1145,11 +1187,11 @@ static gboolean wfd_client_process_request(GIOChannel *source,
 			wfd_state_set(manager, WIFI_DIRECT_STATE_ACTIVATED);
 			wfd_util_set_wifi_direct_state(WIFI_DIRECT_STATE_ACTIVATED);
 
-			noti = (wifi_direct_client_noti_s*) calloc(1, sizeof(wifi_direct_client_noti_s));
+			noti = (wifi_direct_client_noti_s*) g_try_malloc0(sizeof(wifi_direct_client_noti_s));
 			noti->event = WIFI_DIRECT_CLI_EVENT_CONNECTION_RSP;
 			noti->error = WIFI_DIRECT_ERROR_OPERATION_FAILED;
 			if (session)
-				snprintf(noti->param1, MACSTR_LEN, MACSTR, MAC2STR(session->peer->dev_addr));
+				g_snprintf(noti->param1, MACSTR_LEN, MACSTR, MAC2STR(session->peer->dev_addr));
 			goto send_notification;
 		}
 		break;
@@ -1173,10 +1215,10 @@ static gboolean wfd_client_process_request(GIOChannel *source,
 			if (res < 0)
 				WDS_LOGE("Failed to cancel connection");
 
-			noti = (wifi_direct_client_noti_s*) calloc(1, sizeof(wifi_direct_client_noti_s));
+			noti = (wifi_direct_client_noti_s*) g_try_malloc0(sizeof(wifi_direct_client_noti_s));
 			noti->event = WIFI_DIRECT_CLI_EVENT_CONNECTION_RSP;
 			noti->error = WIFI_DIRECT_ERROR_CONNECTION_CANCELED;
-			snprintf(noti->param1, MACSTR_LEN, MACSTR, MAC2STR(req.data.mac_addr));
+			g_snprintf(noti->param1, MACSTR_LEN, MACSTR, MAC2STR(req.data.mac_addr));
 			goto send_notification;
 		}
 		break;
@@ -1210,10 +1252,10 @@ static gboolean wfd_client_process_request(GIOChannel *source,
 				// TODO: check whether to set state and break
 			}
 
-			noti = (wifi_direct_client_noti_s*) calloc(1, sizeof(wifi_direct_client_noti_s));
+			noti = (wifi_direct_client_noti_s*) g_try_malloc0(sizeof(wifi_direct_client_noti_s));
 			noti->event = WIFI_DIRECT_CLI_EVENT_CONNECTION_RSP;
 			noti->error = WIFI_DIRECT_ERROR_CONNECTION_CANCELED;
-			snprintf(noti->param1, MACSTR_LEN, MACSTR, MAC2STR(req.data.mac_addr));
+			g_snprintf(noti->param1, MACSTR_LEN, MACSTR, MAC2STR(req.data.mac_addr));
 			goto send_notification;
 		}
 		break;
@@ -1250,10 +1292,10 @@ static gboolean wfd_client_process_request(GIOChannel *source,
 				return FALSE;
 			}
 
-			noti = (wifi_direct_client_noti_s*) calloc(1, sizeof(wifi_direct_client_noti_s));
+			noti = (wifi_direct_client_noti_s*) g_try_malloc0(sizeof(wifi_direct_client_noti_s));
 			noti->event = WIFI_DIRECT_CLI_EVENT_DISCONNECTION_RSP;
 			noti->error = wfd_manager_disconnect(manager, req.data.mac_addr);
-			snprintf(noti->param1, MACSTR_LEN, MACSTR, MAC2STR(req.data.mac_addr));
+			g_snprintf(noti->param1, MACSTR_LEN, MACSTR, MAC2STR(req.data.mac_addr));
 			goto send_notification;
 		}
 		break;
@@ -1290,7 +1332,7 @@ static gboolean wfd_client_process_request(GIOChannel *source,
 				return FALSE;
 			}
 
-			noti = (wifi_direct_client_noti_s*) calloc(1, sizeof(wifi_direct_client_noti_s));
+			noti = (wifi_direct_client_noti_s*) g_try_malloc0(sizeof(wifi_direct_client_noti_s));
 			noti->event = WIFI_DIRECT_CLI_EVENT_DISCONNECTION_RSP;
 			noti->error = wfd_manager_disconnect_all(manager);
 			goto send_notification;
@@ -1322,15 +1364,9 @@ static gboolean wfd_client_process_request(GIOChannel *source,
 			WDS_LOGD("extra_rsp length [%d], extra_rsp [%x]", rsp.data_length, extra_rsp);
 		}
 		break;
-	case WIFI_DIRECT_CMD_GET_IP_ADDR:	// group
-		res = wfd_local_get_ip_addr(rsp.param2);
-		if (res < 0) {
-			WDS_LOGE("Failed to get local IP address");
-			rsp.result = WIFI_DIRECT_ERROR_OPERATION_FAILED;
-		}
-		break;
 	case WIFI_DIRECT_CMD_CREATE_GROUP:	// group
 		{
+			int persistent = 0;
 			wfd_group_s *group = manager->group;
 			if (group || manager->state < WIFI_DIRECT_STATE_ACTIVATED) {
 				WDS_LOGE("Group already exist or not a proper state");
@@ -1348,12 +1384,16 @@ static gboolean wfd_client_process_request(GIOChannel *source,
 			manager->group = group;
 			WDS_LOGD("Succeeded to create pending group");
 
-			res = wfd_oem_create_group(manager->oem_ops, 0, 0);
+			persistent = (manager->local->group_flags & WFD_GROUP_FLAG_PERSISTENT);
+
+			res = wfd_oem_create_group(manager->oem_ops, persistent, 0, manager->local->passphrase);
 			if (res < 0) {
 				WDS_LOGE("Failed to create group");
 				wfd_destroy_group(manager, GROUP_IFNAME);
 				rsp.result = WIFI_DIRECT_ERROR_OPERATION_FAILED;
 			}
+
+			memset(manager->local->passphrase, 0x0, PASSPHRASE_LEN_MAX + 1);
 		}
 		break;
 	case WIFI_DIRECT_CMD_DESTROY_GROUP:
@@ -1379,7 +1419,7 @@ static gboolean wfd_client_process_request(GIOChannel *source,
 			wfd_state_set(manager, WIFI_DIRECT_STATE_ACTIVATED);
 			wfd_util_set_wifi_direct_state(WIFI_DIRECT_STATE_ACTIVATED);
 
-			noti = (wifi_direct_client_noti_s*) calloc(1, sizeof(wifi_direct_client_noti_s));
+			noti = (wifi_direct_client_noti_s*) g_try_malloc0(sizeof(wifi_direct_client_noti_s));
 			noti->event = WIFI_DIRECT_CLI_EVENT_GROUP_DESTROY_RSP;
 			noti->error = WIFI_DIRECT_ERROR_NONE;
 		}
@@ -1388,28 +1428,18 @@ static gboolean wfd_client_process_request(GIOChannel *source,
 		{
 			wfd_device_s *local = manager->local;
 			rsp.param1 = local->dev_role == WFD_DEV_ROLE_GO;
+			WDS_LOGI("Is group owner : [%s]", rsp.param1 ? "Yes" : "No");
 		}
 		break;
 	case WIFI_DIRECT_CMD_IS_AUTONOMOUS_GROUP:
 		{
-			wfd_group_s *group = manager->group;
-			if (!group) {
-				WDS_LOGE("Group not exist");
+			if ((rsp.param1 = wfd_group_is_autonomous(manager->group)) < 0) {
+				rsp.param1 = FALSE;
 				rsp.result = WIFI_DIRECT_ERROR_NOT_PERMITTED;
 				break;
 			}
-			rsp.param1 = group->flags & WFD_GROUP_FLAG_AUTONOMOUS;
-		}
-		break;
-	case WIFI_DIRECT_CMD_IS_PERSISTENT_GROUP:
-		{
-			wfd_group_s *group = manager->group;
-			if (!group) {
-				WDS_LOGE("Group not exist");
-				rsp.result = WIFI_DIRECT_ERROR_NOT_PERMITTED;
-				break;
-			}
-			rsp.param1 = group->flags & WFD_GROUP_FLAG_PERSISTENT;
+
+			WDS_LOGI("Is autonomous group : [%s]", rsp.param1 ? "Yes" : "No");
 		}
 		break;
 	case WIFI_DIRECT_CMD_GET_OPERATING_CHANNEL:
@@ -1435,7 +1465,7 @@ static gboolean wfd_client_process_request(GIOChannel *source,
 			int persistent_group_count = 0;
 			wfd_persistent_group_info_s *plist;
 
-			res = wfd_oem_get_persistent_groups(manager->oem_ops, (wfd_oem_persistent_group_s **)&plist, &persistent_group_count);
+			res = wfd_oem_get_persistent_groups(manager->oem_ops, (wfd_oem_persistent_group_s**) &plist, &persistent_group_count);
 			if (res < 0) {
 				WDS_LOGE("Error!! wfd_oem_get_persistent_group_info() failed..");
 				rsp.result = WIFI_DIRECT_ERROR_OPERATION_FAILED;
@@ -1450,29 +1480,19 @@ static gboolean wfd_client_process_request(GIOChannel *source,
 		}
 		break;
 	case WIFI_DIRECT_CMD_ACTIVATE_PERSISTENT_GROUP:
-		if (manager->state < WIFI_DIRECT_STATE_ACTIVATED) {
-			WDS_LOGE("Wi-Fi Direct is not activated.");
-			rsp.result = WIFI_DIRECT_ERROR_NOT_PERMITTED;
-			break;
-		}
-
-		res = wfd_oem_set_persistent_reconnect(manager->oem_ops, NULL, TRUE);
-		if (res < 0) {
-			WDS_LOGE("Failed to activate persistent group");
-			rsp.result = WIFI_DIRECT_ERROR_OPERATION_FAILED;
+		{
+			manager->local->group_flags |= WFD_GROUP_FLAG_PERSISTENT;
 		}
 		break;
 	case WIFI_DIRECT_CMD_DEACTIVATE_PERSISTENT_GROUP:
-		if (manager->state < WIFI_DIRECT_STATE_ACTIVATED) {
-			WDS_LOGE("Wi-Fi Direct is not activated.");
-			rsp.result = WIFI_DIRECT_ERROR_NOT_PERMITTED;
-			break;
+		{
+			manager->local->group_flags &= ~(WFD_GROUP_FLAG_PERSISTENT);
 		}
-
-		res = wfd_oem_set_persistent_reconnect(manager->oem_ops, NULL, FALSE);
-		if (res < 0) {
-			WDS_LOGE("Failed to activate persistent group");
-			rsp.result = WIFI_DIRECT_ERROR_OPERATION_FAILED;
+		break;
+	case WIFI_DIRECT_CMD_IS_PERSISTENT_GROUP_ACTIVATED:
+		{
+			rsp.param1 = ((manager->local->group_flags & WFD_GROUP_FLAG_PERSISTENT) == WFD_GROUP_FLAG_PERSISTENT);
+			WDS_LOGI("Is persistent group : [%s]", rsp.param1 ? "Yes" : "No");
 		}
 		break;
 	case WIFI_DIRECT_CMD_REMOVE_PERSISTENT_GROUP:	// group
@@ -1496,6 +1516,7 @@ static gboolean wfd_client_process_request(GIOChannel *source,
 				return TRUE;
 			}
 			WDS_LOGD("Remove persistent group [%s]", persistent_group.ssid);
+			WDS_LOGD("Remove persistent group [" MACSTR "]", MAC2STR(persistent_group.go_mac_address));
 
 			res = wfd_oem_remove_persistent_group(manager->oem_ops,
 									persistent_group.ssid, persistent_group.go_mac_address);
@@ -1531,17 +1552,31 @@ static gboolean wfd_client_process_request(GIOChannel *source,
 			}
 		}
 		break;
-	case WIFI_DIRECT_CMD_GET_DEVICE_MAC:	// manager (sync)
-		{
-			unsigned char mac[MACADDR_LEN] = {0, };
-			res = wfd_local_get_dev_mac(mac);
-			if (res < 0) {
-				WDS_LOGE("Failed to get device mac");
-				rsp.result = WIFI_DIRECT_ERROR_OPERATION_FAILED;
-				break;
-			}
-			memcpy(rsp.param2, mac, sizeof(mac));
+	case WIFI_DIRECT_CMD_GET_MAC_ADDR:	// manager (sync)
+
+		res = wfd_local_get_dev_mac(rsp.param2);
+		if (res < 0) {
+			WDS_LOGE("Failed to get device mac");
+			rsp.result = WIFI_DIRECT_ERROR_OPERATION_FAILED;
+			break;
 		}
+		break;
+	case WIFI_DIRECT_CMD_GET_IP_ADDR:	// group
+		if (manager->state < WIFI_DIRECT_STATE_CONNECTED) {
+			WDS_LOGE("Device is not connected yet");
+			rsp.result = WIFI_DIRECT_ERROR_NOT_PERMITTED;
+			break;
+		}
+
+		unsigned char ip_addr[IPADDR_LEN] = {0,};
+
+		res = wfd_util_get_local_ip(ip_addr);
+		if (res < 0) {
+			WDS_LOGE("Failed to get local IP address");
+			rsp.result = WIFI_DIRECT_ERROR_OPERATION_FAILED;
+		}
+		g_snprintf(rsp.param2, IPSTR_LEN, IPSTR, IP2STR(ip_addr));
+		WDS_LOGI("IP addr : [%s]", rsp.param2);
 		break;
 	case WIFI_DIRECT_CMD_GET_GO_INTENT:	// manager (sync)
 		res = wfd_manager_get_go_intent(&rsp.param1);
@@ -1586,11 +1621,13 @@ static gboolean wfd_client_process_request(GIOChannel *source,
 		}
 		break;
 	case WIFI_DIRECT_CMD_IS_DISCOVERABLE:
-		if (manager->state == WIFI_DIRECT_STATE_DISCOVERING
-				|| wfd_group_is_autonomous(manager->group) == 1)
+		if (manager->state == WIFI_DIRECT_STATE_DISCOVERING ||
+				wfd_group_is_autonomous(manager->group) == TRUE)
 			rsp.param1 = TRUE;
 		else
 			rsp.param1 = FALSE;
+
+		WDS_LOGI("Is discoverable : [%s]", rsp.param1 ? "Yes" : "No");
 		break;
 	case WIFI_DIRECT_CMD_GET_SUPPORTED_WPS_MODE:	// manager (sync)
 		res = wfd_local_get_supported_wps_mode(&rsp.param1);
@@ -1647,7 +1684,7 @@ static gboolean wfd_client_process_request(GIOChannel *source,
 				rsp.result = WIFI_DIRECT_ERROR_OPERATION_FAILED;
 				break;
 			}
-			snprintf(rsp.param2, sizeof(rsp.param2), "%s", session->wps_pin);
+			g_snprintf(rsp.param2, sizeof(rsp.param2), "%s", session->wps_pin);
 		}
 		break;
 	case WIFI_DIRECT_CMD_SET_WPS_PIN:	// session
@@ -1677,65 +1714,85 @@ static gboolean wfd_client_process_request(GIOChannel *source,
 		// TODO: implement in plugin
 		break;
 
+
+	case WIFI_DIRECT_CMD_GET_PEER_INFO:
+		{
+			wfd_discovery_entry_s *peer = NULL;
+			int res = 0;
+			res = wfd_manager_get_peer_info(manager,req.data.mac_addr, &peer);
+			if (res < 0 || !peer) {
+				WDS_LOGE("Failed to get peer info");
+				rsp.result = WIFI_DIRECT_ERROR_OPERATION_FAILED;
+				if(peer)
+					free(peer);
+				break;
+			}
+			rsp.result = WIFI_DIRECT_ERROR_NONE;
+
+			rsp.data_length = sizeof(wfd_discovery_entry_s);
+			extra_rsp = (char*) peer;
+			WDS_LOGD("extra_rsp length [%d], extra_rsp [%x]", rsp.data_length, extra_rsp);
+		}
+		break;
+	case WIFI_DIRECT_CMD_SET_PASSPHRASE:
+		{
+			char passphrase[PASSPHRASE_LEN_MAX + 1] = {0,};
+			int passphrase_len = 0;
+			wfd_group_s *group = manager->group;
+
+			if (group) {
+				WDS_LOGE("Group already exists");
+				rsp.result = WIFI_DIRECT_ERROR_NOT_PERMITTED;
+				_wfd_read_from_client(sock, passphrase, PASSPHRASE_LEN_MAX + 1);
+				break;
+			}
+
+			res = _wfd_read_from_client(sock, passphrase, PASSPHRASE_LEN_MAX + 1);
+			if (res == -2) {
+				WDS_LOGE("Client socket Hanged up");
+				_wfd_deregister_client(manager, sock);
+				return FALSE;
+			} else if (res == -1) {
+				WDS_LOGE("Failed to read socket [%d]", sock);
+				return TRUE;
+			}
+			passphrase[PASSPHRASE_LEN_MAX] = '\0';
+			passphrase_len = strlen(passphrase);
+
+			if (passphrase_len < PASSPHRASE_LEN_MIN || passphrase_len > PASSPHRASE_LEN_MAX) {
+				WDS_LOGE("Passphrase length incorrect [%s]:[%d]", passphrase, passphrase_len);
+				rsp.result = WIFI_DIRECT_ERROR_NOT_PERMITTED;
+				break;
+			}
+
+			g_strlcpy(manager->local->passphrase, passphrase, PASSPHRASE_LEN_MAX + 1);
+			WDS_LOGI("Passphrase string [%s]", manager->local->passphrase);
+		}
+		break;
+	case WIFI_DIRECT_CMD_GET_PASSPHRASE:
+		{
+			wfd_group_s *group = manager->group;
+			if (!group) {
+				WDS_LOGE("Group not exist");
+				rsp.result = WIFI_DIRECT_ERROR_NOT_PERMITTED;
+				break;
+			}
+			if (group->role == WFD_DEV_ROLE_GC) {
+				WDS_LOGE("Device is not GO");
+				rsp.result = WIFI_DIRECT_ERROR_NOT_PERMITTED;
+				break;
+			}
+			g_strlcpy(rsp.param2, group->passphrase, PASSPHRASE_LEN_MAX + 1);
+			WDS_LOGI("group->pass : [%s]", group->passphrase);
+		}
+		break;
 #ifdef TIZEN_FEATURE_SERVICE_DISCOVERY
-	case WIFI_DIRECT_CMD_REGISTER_LOCAL_SERVICE:
-		{
-			int service_type = req.data.int1;
-			char value[100] = {0, };
-			WDS_LOGD("Register service type [%d]", service_type);
-
-			if (manager->state < WIFI_DIRECT_STATE_ACTIVATED) {
-				WDS_LOGE("Wi-Fi Direct is not activated.");
-				rsp.result = WIFI_DIRECT_ERROR_NOT_PERMITTED;
-				_wfd_read_from_client(sock, value, req.cmd_data_len);
-				break;
-			}
-
-			if (WIFI_DIRECT_SERVICE_TYPE_CONTACT_INFO == service_type ||
-					WIFI_DIRECT_SERVICE_TYPE_BT_ADDR == service_type) {
-				res = _wfd_read_from_client(sock, value, req.cmd_data_len);
-				if (res < 0) {
-					WDS_LOGE("Failed to get value");
-					rsp.result = WIFI_DIRECT_ERROR_OPERATION_FAILED;
-					break;
-				}
-				WDS_LOGD("Register service value [%s]", value);
-			}
-
-
-			res = wfd_oem_register_local_service(manager->oem_ops, service_type, value);
-			if (res < 0) {
-				WDS_LOGE("Failed to register local service");
-				rsp.result = WIFI_DIRECT_ERROR_OPERATION_FAILED;
-			}
-		}
-		break;
-
-	case WIFI_DIRECT_CMD_DEREGISTER_LOCAL_SERVICE:
-		{
-			if (manager->state < WIFI_DIRECT_STATE_ACTIVATED) {
-				WDS_LOGE("Wi-Fi Direct is not activated.");
-				rsp.result = WIFI_DIRECT_ERROR_NOT_PERMITTED;
-				break;
-			}
-
-			int service_type = req.data.int1;
-			WDS_LOGD("Deregister service type [%d]", service_type);
-
-			res = wfd_oem_deregister_local_service(manager->oem_ops, service_type);
-			if (res < 0) {
-				WDS_LOGE("Failed to deregister local service");
-				rsp.result = WIFI_DIRECT_ERROR_OPERATION_FAILED;
-			}
-		}
-		break;
-
 	case WIFI_DIRECT_CMD_REGISTER_SERVICE:
 		{
 			int service_type = req.data.int1;
 			char *info_str = NULL;
 
-			info_str = (char*) calloc(1, req.cmd_data_len);
+			info_str = (char*) g_try_malloc0(req.cmd_data_len);
 			if (!info_str) {
 				WDS_LOGE("Failed to allocate memory for info string");
 				rsp.result = WIFI_DIRECT_ERROR_OPERATION_FAILED;
@@ -1804,7 +1861,7 @@ static gboolean wfd_client_process_request(GIOChannel *source,
 				rsp.result = WIFI_DIRECT_ERROR_OPERATION_FAILED;
 			}
 
-			noti = (wifi_direct_client_noti_s*) calloc(1, sizeof(wifi_direct_client_noti_s));
+			noti = (wifi_direct_client_noti_s*) g_try_malloc0(sizeof(wifi_direct_client_noti_s));
 			noti->event = WIFI_DIRECT_CLI_EVENT_SERVICE_DISCOVERY_STARTED;
 			noti->error = WIFI_DIRECT_ERROR_NONE;
 		}
@@ -1851,6 +1908,16 @@ static gboolean wfd_client_process_request(GIOChannel *source,
 
 			} else {
 
+				if(miracast_enable) {
+					manager->local->display.type = WIFI_DISPLAY_DEFAULT_TYPE;
+					manager->local->display.port = WIFI_DISPLAY_DEFAULT_PORT;
+					manager->local->display.availablity = WIFI_DISPLAY_DEFAULT_AVAIL;
+					manager->local->display.hdcp_support = WIFI_DISPLAY_DEFAULT_HDCP;
+					manager->local->display.max_tput = WIFI_DISPLAY_DEFAULT_TPUT;
+				} else {
+					memset(&(manager->local->display), 0x0, sizeof(wfd_display_type_e));
+				}
+
 				int screen_mirroring_status;
 				if (vconf_get_int(VCONFKEY_SCREEN_MIRRORING_STATE, &screen_mirroring_status) < 0)
 					WDS_LOGE("Failed to get vconf VCONFKEY_SCREEN_MIRRORING_STATE\n");
@@ -1888,26 +1955,174 @@ static gboolean wfd_client_process_request(GIOChannel *source,
 			}
 		}
 		break;
-#endif /* TIZEN_FEATURE_WIFI_DISPLAY */
-
-	case WIFI_DIRECT_CMD_GET_PEER_INFO:
+	case WIFI_DIRECT_CMD_INIT_DISPLAY:
 		{
-			wfd_discovery_entry_s *peer = NULL;
-			int res = 0;
-			res = wfd_manager_get_peer_info(manager,req.data.mac_addr, &peer);
-			if (res < 0 || !peer) {
-				WDS_LOGE("Failed to get peer info");
-				rsp.result = WIFI_DIRECT_ERROR_OPERATION_FAILED;
-				g_free(peer);
+			if(manager->state < WIFI_DIRECT_STATE_ACTIVATED || manager->state >= WIFI_DIRECT_STATE_CONNECTED) {
+				rsp.result = WIFI_DIRECT_ERROR_NOT_PERMITTED;
 				break;
 			}
-			rsp.result = WIFI_DIRECT_ERROR_NONE;
 
-			rsp.data_length = sizeof(wfd_discovery_entry_s);
-			extra_rsp = (char*) peer;
-			WDS_LOGD("extra_rsp length [%d], extra_rsp [%x]", rsp.data_length, extra_rsp);
+			wfd_device_s * device = manager->local;
+
+			res = wfd_oem_miracast_init(manager->oem_ops, true);
+			if (res < 0) {
+				WDS_LOGE("Failed to initialize display");
+				rsp.result = WIFI_DIRECT_ERROR_OPERATION_FAILED;
+			} else {
+				device->display.type = WIFI_DISPLAY_DEFAULT_TYPE;
+				device->display.port = WIFI_DISPLAY_DEFAULT_PORT;
+				device->display.availablity = WIFI_DISPLAY_DEFAULT_AVAIL;
+				device->display.hdcp_support = WIFI_DISPLAY_DEFAULT_HDCP;
+				device->display.max_tput = WIFI_DISPLAY_DEFAULT_TPUT;
+			}
 		}
 		break;
+	case WIFI_DIRECT_CMD_DEINIT_DISPLAY:
+		{
+			if(manager->state < WIFI_DIRECT_STATE_ACTIVATED || manager->state >= WIFI_DIRECT_STATE_CONNECTED) {
+				rsp.result = WIFI_DIRECT_ERROR_NOT_PERMITTED;
+				break;
+			}
+
+			wfd_device_s * device = manager->local;
+
+			res = wfd_oem_miracast_init(manager->oem_ops, false);
+			if (res < 0) {
+				WDS_LOGE("Failed to deinitialize display");
+				rsp.result = WIFI_DIRECT_ERROR_OPERATION_FAILED;
+
+			}
+			memset(&(device->display), 0x0, sizeof(wfd_display_type_e));
+		}
+		break;
+	case WIFI_DIRECT_CMD_SET_DISPLAY:
+		{
+			if(manager->state < WIFI_DIRECT_STATE_ACTIVATED || manager->state >= WIFI_DIRECT_STATE_CONNECTED) {
+				rsp.result = WIFI_DIRECT_ERROR_NOT_PERMITTED;
+				break;
+			}
+
+			int type = req.data.int1;	// type
+			int port = req.data.int2;	// port
+			int hdcp = req.data.int3;	// hdcp
+
+			res = wfd_manager_set_display_device(type, port, hdcp);
+			if (res < 0) {
+				WDS_LOGE("Failed to set display device settings");
+				rsp.result = WIFI_DIRECT_ERROR_OPERATION_FAILED;
+			}
+		}
+		break;
+	case WIFI_DIRECT_CMD_SET_DISPLAY_AVAILABILITY:
+		{
+			if(manager->state < WIFI_DIRECT_STATE_ACTIVATED) {
+				rsp.result = WIFI_DIRECT_ERROR_NOT_PERMITTED;
+				break;
+			}
+			res = wfd_manager_set_session_availability(req.data.int1);
+			if (res < 0) {
+				WDS_LOGE("Failed to set session availability");
+				rsp.result = WIFI_DIRECT_ERROR_OPERATION_FAILED;
+				break;
+			}
+		}
+		break;
+	case WIFI_DIRECT_CMD_GET_PEER_DISPLAY_TYPE:
+	{
+		if(manager->state < WIFI_DIRECT_STATE_ACTIVATED) {
+			rsp.result = WIFI_DIRECT_ERROR_NOT_PERMITTED;
+			break;
+		}
+
+		wfd_device_s *peer = NULL;
+
+		peer = wfd_manager_get_peer_by_addr(manager, req.data.mac_addr);
+		if(peer) {
+			rsp.param1 = peer->display.type;
+		} else {
+			WDS_LOGE("Failed to get peer");
+			rsp.result = WIFI_DIRECT_ERROR_INVALID_PARAMETER;
+			break;
+		}
+	}
+	break;
+	case WIFI_DIRECT_CMD_GET_PEER_DISPLAY_AVAILABILITY:
+	{
+		if(manager->state < WIFI_DIRECT_STATE_ACTIVATED) {
+			rsp.result = WIFI_DIRECT_ERROR_NOT_PERMITTED;
+			break;
+		}
+
+		wfd_device_s *peer = NULL;
+
+		peer = wfd_manager_get_peer_by_addr(manager, req.data.mac_addr);
+		if(peer) {
+			rsp.param1 = peer->display.availablity;
+		} else {
+			WDS_LOGE("Failed to get peer");
+			rsp.result = WIFI_DIRECT_ERROR_INVALID_PARAMETER;
+			break;
+		}
+	}
+	break;
+	case WIFI_DIRECT_CMD_GET_PEER_DISPLAY_HDCP:
+	{
+		if(manager->state < WIFI_DIRECT_STATE_ACTIVATED) {
+			rsp.result = WIFI_DIRECT_ERROR_NOT_PERMITTED;
+			break;
+		}
+
+		wfd_device_s *peer = NULL;
+
+		peer = wfd_manager_get_peer_by_addr(manager, req.data.mac_addr);
+		if(peer) {
+			rsp.param1 = peer->display.hdcp_support;
+		} else {
+			WDS_LOGE("Failed to get peer");
+			rsp.result = WIFI_DIRECT_ERROR_INVALID_PARAMETER;
+			break;
+		}
+	}
+	break;
+	case WIFI_DIRECT_CMD_GET_PEER_DISPLAY_PORT:
+	{
+		if(manager->state < WIFI_DIRECT_STATE_ACTIVATED) {
+			rsp.result = WIFI_DIRECT_ERROR_NOT_PERMITTED;
+			break;
+		}
+
+		wfd_device_s *peer = NULL;
+
+		peer = wfd_manager_get_peer_by_addr(manager, req.data.mac_addr);
+		if(peer) {
+			rsp.param1 = peer->display.port;
+		} else {
+			WDS_LOGE("Failed to get peer");
+			rsp.result = WIFI_DIRECT_ERROR_INVALID_PARAMETER;
+			break;
+		}
+	}
+	break;
+	case WIFI_DIRECT_CMD_GET_PEER_DISPLAY_THROUGHPUT:
+	{
+		if(manager->state < WIFI_DIRECT_STATE_ACTIVATED) {
+			rsp.result = WIFI_DIRECT_ERROR_NOT_PERMITTED;
+			break;
+		}
+
+		wfd_device_s *peer = NULL;
+
+		peer = wfd_manager_get_peer_by_addr(manager, req.data.mac_addr);
+		if(peer) {
+			rsp.param1 = peer->display.max_tput;
+		} else {
+			WDS_LOGE("Failed to get peer");
+			rsp.result = WIFI_DIRECT_ERROR_INVALID_PARAMETER;
+			break;
+		}
+	}
+	break;
+#endif /* TIZEN_FEATURE_WIFI_DISPLAY */
 	default:
 		WDS_LOGE("Unknown command[%d]", req.cmd);
 		rsp.result = WIFI_DIRECT_ERROR_NOT_PERMITTED;
@@ -1954,11 +2169,7 @@ send_notification:
 	}
 
 done:
-
 	g_free(extra_rsp);
-	extra_rsp = NULL;
-
-
 	__WDS_LOG_FUNC_EXIT__;
 	return TRUE;
 }

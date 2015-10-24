@@ -43,7 +43,10 @@
 #include <glib.h>
 
 #include <vconf.h>
+#if defined(TIZEN_FEATURE_DEFAULT_CONNECTION_AGENT)
 #include <app_control.h>
+#include <aul.h>
+#endif
 #include <wifi-direct.h>
 
 #include "wifi-direct-ipc.h"
@@ -52,6 +55,21 @@
 #include "wifi-direct-client.h"
 #include "wifi-direct-util.h"
 #include "wifi-direct-oem.h"
+#ifdef CTRL_IFACE_DBUS
+#include "wifi-direct-group.h"
+#include "wifi-direct-session.h"
+#endif /* CTRL_IFACE_DBUS */
+
+#ifdef CTRL_IFACE_DBUS
+#include <linux/unistd.h>
+#include <asm/types.h>
+#include <linux/netlink.h>
+#include <linux/rtnetlink.h>
+
+#include <netlink/netlink.h>
+#include <netlink/socket.h>
+#include <netlink/route/neighbour.h>
+#endif /* CTRL_IFACE_DBUS */
 
 static int _txt_to_mac(char *txt, unsigned char *mac)
 {
@@ -59,14 +77,15 @@ static int _txt_to_mac(char *txt, unsigned char *mac)
 
 	for (;;) {
 		mac[i++] = (char) strtoul(txt, &txt, 16);
-		if (!*txt++ || i == 6)
+		if (i == MACADDR_LEN || !*txt++)
 			break;
 	}
 
 	if (i != MACADDR_LEN)
 		return -1;
 
-	WDS_SECLOG("Converted MAC address [" MACSTR "]", MAC2STR(mac));
+	WDS_LOGD("Converted MAC address [" MACSECSTR "]",
+					MAC2SECSTR(mac));
 	return 0;
 }
 
@@ -76,14 +95,14 @@ static int _txt_to_ip(char *txt, unsigned char *ip)
 
 	for (;;) {
 		ip[i++] = (char) strtoul(txt, &txt, 10);
-		if (!*txt++ || i == 4)
+		if (i == IPADDR_LEN || !*txt++)
 			break;
 	}
 
-	if (i != 4)
+	if (i != IPADDR_LEN)
 		return -1;
 
-	WDS_LOGD("Converted IP address [" IPSTR "]", IP2STR(ip));
+	WDS_LOGD("Converted IP address [" IPSECSTR "]", IP2SECSTR(ip));
 	return 0;
 }
 
@@ -201,11 +220,9 @@ int wfd_util_get_phone_name(char *phone_name)
 		WDS_LOGE( "Failed to get vconf value for %s", VCONFKEY_SETAPPL_DEVICE_NAME_STR);
 		return -1;
 	}
-	strncpy(phone_name, name, DEV_NAME_LEN);
-	phone_name[DEV_NAME_LEN] = '\0';
-
+	g_strlcpy(phone_name, name, DEV_NAME_LEN + 1);
 	WDS_LOGD( "[%s: %s]", VCONFKEY_SETAPPL_DEVICE_NAME_STR, phone_name);
-	free(name);
+	g_free(name);
 	__WDS_LOG_FUNC_EXIT__;
 	return 0;
 }
@@ -328,7 +345,6 @@ int wfd_util_set_country()
 	return 0;
 }
 
-#if 0
 int wfd_util_unset_country()
 {
 	__WDS_LOG_FUNC_ENTER__;
@@ -343,7 +359,6 @@ int wfd_util_unset_country()
 	__WDS_LOG_FUNC_EXIT__;
 	return 0;
 }
-#endif
 
 int wfd_util_check_wifi_state()
 {
@@ -351,8 +366,8 @@ int wfd_util_check_wifi_state()
 	int wifi_state = 0;
 	int res = 0;
 
-	/* vconf key and value (vconf-keys.h)
-#define VCONFKEY_WIFI_STATE "memory/wifi/state"
+/* vconf key and value (vconf-keys.h)
+#define VCONFKEY_WIFI_STATE	"memory/wifi/state"
 enum {
         VCONFKEY_WIFI_OFF = 0x00,
         VCONFKEY_WIFI_UNCONNECTED,
@@ -360,8 +375,7 @@ enum {
         VCONFKEY_WIFI_TRANSFER,
         VCONFKEY_WIFI_STATE_MAX
 };
-	 */
-
+*/
 	res = vconf_get_int(VCONFKEY_WIFI_STATE, &wifi_state);
 	if (res < 0) {
 		WDS_LOGE("Failed to get vconf value [%s]", VCONFKEY_WIFI_STATE);
@@ -414,7 +428,10 @@ int wfd_util_wifi_direct_activatable()
 #ifndef TIZEN_WLAN_CONCURRENT_ENABLE
 	int res_wifi = 0;
 
+	//TEMP FIX: in Hawk-P vconf is not working so do not check wifi state
+	#if !defined TIZEN_TV
 	res_wifi = wfd_util_check_wifi_state();
+	#endif
 	if (res_wifi < 0) {
 		WDS_LOGE("Failed to check Wi-Fi state");
 		return WIFI_DIRECT_ERROR_OPERATION_FAILED;
@@ -524,7 +541,7 @@ int wfd_util_get_local_dev_mac(unsigned char *dev_mac)
 		__WDS_LOG_FUNC_EXIT__;
 		return -1;
 	}
-	WDS_SECLOG("Local MAC address [%s]", ptr);
+	WDS_SECLOGD("Local MAC address [%s]", ptr);
 
 	res = _txt_to_mac(local_mac, dev_mac);
 	if (res < 0) {
@@ -535,45 +552,70 @@ int wfd_util_get_local_dev_mac(unsigned char *dev_mac)
 	}
 
 	dev_mac[0] |= 0x2;
-	WDS_SECLOG("Local Device MAC address [" MACSTR "]", MAC2STR(dev_mac));
+	WDS_LOGD("Local Device MAC address [" MACSECSTR "]", MAC2SECSTR(dev_mac));
 
 	fclose(fd);
 	__WDS_LOG_FUNC_EXIT__;
 	return 0;
 }
 
+#ifdef TIZEN_FEATURE_DEFAULT_CONNECTION_AGENT
 int wfd_util_start_wifi_direct_popup()
 {
 	__WDS_LOG_FUNC_ENTER__;
 
-	app_control_h control = NULL;
-	if (APP_CONTROL_ERROR_NONE != app_control_create(&control)) {
-		WDS_LOGE("App control create Failed !");
+	app_control_h popup_control = NULL;
+	if (APP_CONTROL_ERROR_NONE != app_control_create(&popup_control)
+		|| NULL == popup_control) {
+		WDS_LOGE("App control operation Failed !");
 		return -1;
 	}
-	if (APP_CONTROL_ERROR_NONE != app_control_set_operation(control,
+	if (APP_CONTROL_ERROR_NONE != app_control_set_operation(popup_control,
 		APP_CONTROL_OPERATION_DEFAULT)) {
-		WDS_LOGE("App control set operation Failed !");
-		app_control_destroy(control);
+		WDS_LOGE("App control operation Failed !");
+		app_control_destroy(popup_control);
 		return -1;
 	}
-	if (APP_CONTROL_ERROR_NONE != app_control_set_app_id(control,
+	if (APP_CONTROL_ERROR_NONE != app_control_set_app_id(popup_control,
 		"org.tizen.wifi-direct-popup")) {
-		WDS_LOGE("App control set app id Failed !");
-		app_control_destroy(control);
+		WDS_LOGE("App control operation Failed !");
+		app_control_destroy(popup_control);
 		return -1;
 	}
 	if (APP_CONTROL_ERROR_NONE !=
-		app_control_send_launch_request(control, NULL, NULL)) {
-		WDS_LOGE("App control send launch request Failed !");
+		app_control_send_launch_request(popup_control, NULL, NULL)) {
+		WDS_LOGE("App control operation Failed !");
+		app_control_destroy(popup_control);
 		return -1;
 	}
 
-	app_control_destroy(control);
+	app_control_destroy(popup_control);
+
 	WDS_LOGD("Succeeded to launch wifi-direct-popup");
 	__WDS_LOG_FUNC_EXIT__;
 	return 0;
 }
+
+int wfd_util_stop_wifi_direct_popup()
+{
+	__WDS_LOG_FUNC_ENTER__;
+
+	int pid = aul_app_get_pid("org.tizen.wifi-direct-popup");
+	if (pid > 0) {
+		if (aul_terminate_pid(pid) != AUL_R_OK) {
+			WDS_LOGD("Failed to destroy wifi-direct-popup pid[%d]", pid);
+			return -1;
+		} else {
+			WDS_LOGD("Succeeded to destroy wifi-direct-popup");
+		}
+	} else {
+		WDS_LOGD("Wifi-direct-popup not running");
+	}
+
+	__WDS_LOG_FUNC_EXIT__;
+	return 0;
+}
+#endif /* TIZEN_FEATURE_DEFAULT_CONNECTION_AGENT */
 
 int _connect_remote_device(char *ip_str)
 {
@@ -598,7 +640,7 @@ int _connect_remote_device(char *ip_str)
 
 	errno = 0;
 	connect(sock, (struct sockaddr*) &remo_addr, sizeof(remo_addr));
-	WDS_LOGD("Status of connection to remote device[%s] - (%s)", ip_str, strerror(errno));
+	WDS_SECLOGD("Status of connection to remote device[%s] - (%s)", ip_str, strerror(errno));
 
 	close(sock);
 
@@ -650,10 +692,14 @@ static void _dhcps_ip_leased_cb(keynode_t *key, void* data)
 			wfd_client_send_event(manager, &noti);
 			break;
 		} else {
-			WDS_SECLOG("Different interface address peer[" MACSTR "] vs dhcp[" MACSTR "]", MAC2STR(peer->intf_addr), MAC2STR(intf_addr));
+			WDS_LOGD("Different interface address peer[" MACSECSTR "] vs dhcp[" MACSECSTR "]",
+						MAC2SECSTR(peer->intf_addr), MAC2SECSTR(intf_addr));
 		}
 	}
 	fclose(fp);
+
+	vconf_ignore_key_changed(VCONFKEY_DHCPS_IP_LEASE, _dhcps_ip_leased_cb);
+	vconf_set_int(VCONFKEY_DHCPS_IP_LEASE, 0);
 
 	__WDS_LOG_FUNC_EXIT__;
 	return;
@@ -669,6 +715,11 @@ static gboolean _polling_ip(gpointer user_data)
 	char ip_str[IPSTR_LEN] = {0, };
 	static int count = 0;
 	int res = 0;
+
+	if (!peer) {
+		WDS_LOGE("peer data is not exists");
+		return FALSE;
+	}
 
 	res = wfd_manager_get_goup_ifname(&ifname);
 	if (res < 0 || !ifname) {
@@ -689,8 +740,8 @@ static gboolean _polling_ip(gpointer user_data)
 		__WDS_LOG_FUNC_EXIT__;
 		return TRUE;
 	}
-	WDS_LOGD("Succeeded to get local(client) IP [" IPSTR "] for iface[%s]",
-				    IP2STR(local->ip_addr), ifname);
+	WDS_LOGD("Succeeded to get local(client) IP [" IPSECSTR "] for iface[%s]",
+				    IP2SECSTR(local->ip_addr), ifname);
 
 	res = wfd_util_dhcpc_get_server_ip(peer->ip_addr);
 	if (res < 0) {
@@ -698,14 +749,18 @@ static gboolean _polling_ip(gpointer user_data)
 		__WDS_LOG_FUNC_EXIT__;
 		return TRUE;
 	}
-	WDS_LOGD("Succeeded to get server IP [" IPSTR "]", IP2STR(peer->ip_addr));
+	WDS_LOGD("Succeeded to get server IP [" IPSECSTR "]", IP2SECSTR(peer->ip_addr));
 	count = 0;
 
-	snprintf(ip_str, IPSTR_LEN, IPSTR, IP2STR(peer->ip_addr));
+	g_snprintf(ip_str, IPSTR_LEN, IPSTR, IP2STR(peer->ip_addr));
 	_connect_remote_device(ip_str);
 
 	wfd_state_set(manager, WIFI_DIRECT_STATE_CONNECTED);
 	wfd_util_set_wifi_direct_state(WIFI_DIRECT_STATE_CONNECTED);
+#ifdef CTRL_IFACE_DBUS
+	wfd_destroy_session(manager);
+#endif /* CTRL_IFACE_DBUS */
+
 	wifi_direct_client_noti_s noti;
 	memset(&noti, 0x0, sizeof(wifi_direct_client_noti_s));
 	noti.event = WIFI_DIRECT_CLI_EVENT_CONNECTION_RSP;
@@ -733,6 +788,16 @@ int wfd_util_dhcps_start()
 		WDS_LOGE("Failed to start wifi-direct-dhcp.sh server");
 		return -1;
 	}
+
+	/*
+	 * As we are GO so IP should be updated
+	 * before sending Group Created Event
+	 */
+	vconf_set_str(VCONFKEY_IFNAME, GROUP_IFNAME);
+	vconf_set_str(VCONFKEY_LOCAL_IP, "192.168.49.1");
+	vconf_set_str(VCONFKEY_SUBNET_MASK, "255.255.255.0");
+	vconf_set_str(VCONFKEY_GATEWAY, "192.168.49.1");
+
 	WDS_LOGD("Successfully started wifi-direct-dhcp.sh server");
 
 	__WDS_LOG_FUNC_EXIT__;
@@ -850,8 +915,8 @@ int wfd_util_dhcpc_get_ip(char *ifname, unsigned char *ip_addr, int is_IPv6)
 	}
 
 	ifr.ifr_addr.sa_family = AF_INET;
-	memset(ifr.ifr_name, 0x00, 16);
-	strncpy(ifr.ifr_name, ifname, IFNAMSIZ-1);
+	memset(ifr.ifr_name, 0x00, IFNAMSIZ);
+	g_strlcpy(ifr.ifr_name, ifname, IFNAMSIZ);
 
 	errno = 0;
 	res = ioctl(sock, SIOCGIFADDR, &ifr);
@@ -866,7 +931,6 @@ int wfd_util_dhcpc_get_ip(char *ifname, unsigned char *ip_addr, int is_IPv6)
 	sin = (struct sockaddr_in*) &ifr.ifr_broadaddr;
 	ip_str = inet_ntoa(sin->sin_addr);
 	_txt_to_ip(ip_str, ip_addr);
-
 	__WDS_LOG_FUNC_EXIT__;
 	return 0;
 }
@@ -890,6 +954,13 @@ int wfd_util_dhcpc_get_server_ip(unsigned char* ip_addr)
 			__WDS_LOG_FUNC_EXIT__;
 			return -1;
 		}
+
+		if(strcmp(get_str, ZEROIP) == 0) {
+			WDS_LOGE("Failed to get vconf value[%s]", VCONFKEY_DHCPC_SERVER_IP);
+			__WDS_LOG_FUNC_EXIT__;
+			return -1;
+		}
+
 		WDS_LOGD("VCONFKEY_DHCPC_SERVER_IP(%s) : %s\n", VCONFKEY_DHCPC_SERVER_IP, get_str);
 		_txt_to_ip(get_str, ip_addr);
 		if (*ip_addr)
@@ -900,3 +971,316 @@ int wfd_util_dhcpc_get_server_ip(unsigned char* ip_addr)
 	__WDS_LOG_FUNC_EXIT__;
 	return 0;
 }
+
+int wfd_util_get_local_ip(unsigned char* ip_addr)
+{
+	__WDS_LOG_FUNC_ENTER__;
+	char* get_str = NULL;
+	int count = 0;
+
+	if (!ip_addr) {
+		WDS_LOGE("Invalid parameter");
+		__WDS_LOG_FUNC_EXIT__;
+		return -1;
+	}
+
+	while(count < 10) {
+		get_str = vconf_get_str(VCONFKEY_LOCAL_IP);
+		if (!get_str) {
+			WDS_LOGE("Failed to get vconf value[%s]", VCONFKEY_LOCAL_IP);
+			__WDS_LOG_FUNC_EXIT__;
+			return -1;
+		}
+
+		if(strcmp(get_str, ZEROIP) == 0) {
+			WDS_LOGE("Failed to get vconf value[%s]", VCONFKEY_LOCAL_IP);
+			__WDS_LOG_FUNC_EXIT__;
+			return -1;
+		}
+
+		WDS_LOGD("VCONFKEY_DHCPC_SERVER_IP(%s) : %s\n", VCONFKEY_LOCAL_IP, get_str);
+		_txt_to_ip(get_str, ip_addr);
+		if (*ip_addr)
+			break;
+		count++;
+	}
+
+	__WDS_LOG_FUNC_EXIT__;
+	return 0;
+}
+
+#ifdef CTRL_IFACE_DBUS
+static int _wfd_util_set_vconf_for_static_ip(const char *ifname, char *static_ip)
+{
+	__WDS_LOG_FUNC_ENTER__;
+
+	if (!ifname || !static_ip)
+		return -1;
+
+	vconf_set_str(VCONFKEY_IFNAME, ifname);
+	vconf_set_str(VCONFKEY_LOCAL_IP, static_ip);
+	vconf_set_str(VCONFKEY_SUBNET_MASK, "255.255.255.0");
+	vconf_set_str(VCONFKEY_GATEWAY, "192.168.49.1");
+
+	__WDS_LOG_FUNC_EXIT__;
+
+	return 0;
+}
+
+
+static int _wfd_util_static_ip_set(const char *ifname, unsigned char *static_ip)
+{
+	__WDS_LOG_FUNC_ENTER__;
+	int res = 0;
+	unsigned char ip_addr[IPADDR_LEN];
+	char ip_str[IPSTR_LEN] = {0, };
+
+	int if_index;
+	int nl_sock = -1;
+	struct sockaddr_nl dst_addr;
+
+	struct {
+		struct nlmsghdr     nh;
+		struct ifaddrmsg    ifa;
+		char            attrbuf[1024];
+	} req;
+	struct rtattr *rta;
+	struct iovec iov;
+	struct msghdr nl_msg;
+
+	if (!ifname || !static_ip) {
+		WDS_LOGE("Invalid parameter");
+		__WDS_LOG_FUNC_EXIT__;
+		return -1;
+	}
+
+	/* Get index of interface */
+	if_index = if_nametoindex(ifname);
+	if(if_index < 0) {
+		WDS_LOGE("Failed to get interface index. [%s]", strerror(errno));
+		__WDS_LOG_FUNC_EXIT__;
+		return -1;
+	}
+
+	WDS_LOGD("Creating a Netlink Socket");
+	nl_sock = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
+	if (nl_sock < 0) {
+		WDS_LOGE("Failed to create socket. [%s]", strerror(errno));
+		__WDS_LOG_FUNC_EXIT__;
+		return -1;
+	}
+
+	memset(&dst_addr, 0, sizeof(dst_addr));
+	dst_addr.nl_family =  AF_NETLINK;
+	dst_addr.nl_pid = 0;
+
+	memset(&req, 0, sizeof(req));
+	req.nh.nlmsg_len = NLMSG_LENGTH(sizeof(struct ifaddrmsg));
+	req.nh.nlmsg_type = RTM_NEWADDR;
+	req.nh.nlmsg_flags = NLM_F_CREATE | NLM_F_EXCL | NLM_F_REQUEST;
+
+	req.ifa.ifa_family = AF_INET;
+	req.ifa.ifa_prefixlen = 24;
+	req.ifa.ifa_flags = IFA_F_PERMANENT;
+	req.ifa.ifa_scope = 0;
+	req.ifa.ifa_index = if_index;
+
+	rta = (struct rtattr *)(req.attrbuf);
+	rta->rta_type = IFA_LOCAL;
+	rta->rta_len = RTA_LENGTH(IPADDR_LEN);
+	memcpy(RTA_DATA(rta), static_ip, IPADDR_LEN);
+	req.nh.nlmsg_len = NLMSG_ALIGN(req.nh.nlmsg_len) + rta->rta_len;
+
+	rta = (struct rtattr *)(req.attrbuf + rta->rta_len);
+	rta->rta_type = IFA_BROADCAST;
+	rta->rta_len = RTA_LENGTH(IPADDR_LEN);
+	memcpy(ip_addr, static_ip, IPADDR_LEN);
+	ip_addr[3] =0xff;
+	memcpy(RTA_DATA(rta), ip_addr, IPADDR_LEN);
+	req.nh.nlmsg_len += rta->rta_len;
+
+	memset(&iov, 0, sizeof(iov));
+	iov.iov_base = &req;
+	iov.iov_len = req.nh.nlmsg_len;
+
+	memset(&nl_msg, 0, sizeof(nl_msg));
+	nl_msg.msg_name = (void *)&dst_addr;
+	nl_msg.msg_namelen = sizeof(dst_addr);
+	nl_msg.msg_iov = &iov;
+	nl_msg.msg_iovlen = 1;
+
+	res = sendmsg(nl_sock, &nl_msg, 0);
+	if (res < 0) {
+		WDS_LOGE("Failed to sendmsg. [%s]", strerror(errno));
+	} else {
+		WDS_LOGD("Succed to sendmsg. [%d]", res);
+	}
+
+	close(nl_sock);
+	WDS_LOGE("Succeeded to set local(client) IP [" IPSTR "] for iface[%s]",
+				IP2STR(static_ip), ifname);
+
+	snprintf(ip_str, IPSTR_LEN, IPSTR, IP2STR(static_ip));
+	_wfd_util_set_vconf_for_static_ip(ifname, ip_str);
+
+	__WDS_LOG_FUNC_EXIT__;
+	return res;
+}
+
+#ifdef TIZEN_VENDOR_ATH
+int wfd_util_static_ip_unset(const char *ifname)
+{
+	__WDS_LOG_FUNC_ENTER__;
+	int res = 0;
+	unsigned char ip_addr[IPADDR_LEN];
+	char error_buf[MAX_SIZE_ERROR_BUFFER] = {};
+
+	int if_index;
+	int nl_sock = -1;
+	struct sockaddr_nl dst_addr;
+
+	struct {
+		struct nlmsghdr     nh;
+		struct ifaddrmsg    ifa;
+		char            attrbuf[1024];
+	} req;
+	struct rtattr *rta;
+	struct iovec iov;
+	struct msghdr nl_msg;
+
+	if (!ifname) {
+		WDS_LOGE("Invalid parameter");
+		__WDS_LOG_FUNC_EXIT__;
+		return -1;
+	}
+
+	res = wfd_util_dhcpc_get_ip(ifname, ip_addr, 0);
+	if (res < 0) {
+		WDS_LOGE("Failed to get local IP for interface %s", ifname);
+		__WDS_LOG_FUNC_EXIT__;
+		return -1;
+	}
+	WDS_LOGE("Succeeded to get local(client) IP [" IPSTR "] for iface[%s]",
+			IP2STR(ip_addr), ifname);
+
+	if_index = if_nametoindex(ifname);
+	if(if_index < 0) {
+		strerror_r(errno, error_buf, MAX_SIZE_ERROR_BUFFER);
+		WDS_LOGE("Failed to get interface index. [%s]", error_buf);
+		__WDS_LOG_FUNC_EXIT__;
+		return -1;
+	}
+
+	WDS_LOGD("Creating a Netlink Socket");
+	nl_sock = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
+	if (nl_sock < 0) {
+		strerror_r(errno, error_buf, MAX_SIZE_ERROR_BUFFER);
+		WDS_LOGE("Failed to create socket. [%s]", error_buf);
+		__WDS_LOG_FUNC_EXIT__;
+		return -1;
+	}
+
+	WDS_LOGD("Set dst socket address to kernel");
+	memset(&dst_addr, 0, sizeof(dst_addr));
+	dst_addr.nl_family =  AF_NETLINK;
+	dst_addr.nl_pid = 0;
+
+	memset(&req, 0, sizeof(req));
+	req.nh.nlmsg_len = NLMSG_LENGTH(sizeof(struct ifaddrmsg));
+	req.nh.nlmsg_type = RTM_DELADDR;
+	req.nh.nlmsg_flags = NLM_F_REQUEST;
+
+	req.ifa.ifa_family = AF_INET;
+	req.ifa.ifa_prefixlen = 32;
+	req.ifa.ifa_flags = IFA_F_PERMANENT;
+	req.ifa.ifa_scope = 0;
+	req.ifa.ifa_index = if_index;
+
+	rta = (struct rtattr *)(req.attrbuf);
+	rta->rta_type = IFA_LOCAL;
+	rta->rta_len = RTA_LENGTH(IPADDR_LEN);
+	memcpy(RTA_DATA(rta), ip_addr, IPADDR_LEN);
+	req.nh.nlmsg_len = NLMSG_ALIGN(req.nh.nlmsg_len) + rta->rta_len;
+
+	memset(&iov, 0, sizeof(iov));
+	iov.iov_base = &req;
+	iov.iov_len = req.nh.nlmsg_len;
+
+	memset(&nl_msg, 0, sizeof(nl_msg));
+	nl_msg.msg_name = (void *)&dst_addr;
+	nl_msg.msg_namelen = sizeof(dst_addr);
+	nl_msg.msg_iov = &iov;
+	nl_msg.msg_iovlen = 1;
+
+	res = sendmsg(nl_sock, &nl_msg, 0);
+	if (res < 0) {
+		strerror_r(errno, error_buf, MAX_SIZE_ERROR_BUFFER);
+		WDS_LOGE("Failed to sendmsg. [%s]", error_buf);
+	} else {
+		WDS_LOGD("Succeed to sendmsg. [%d]", res);
+	}
+
+	close(nl_sock);
+
+	__WDS_LOG_FUNC_EXIT__;
+	return res;
+}
+#endif /* TIZEN_VENDOR_ATH */
+
+int wfd_util_ip_over_eap_assign(wfd_device_s *peer, const char *ifname)
+{
+	__WDS_LOG_FUNC_ENTER__;
+	wfd_manager_s *manager = wfd_get_manager();
+	char ip_str[IPSTR_LEN] = {0, };
+	if (!peer) {
+		WDS_LOGE("Invalid paramater");
+		return -1;
+	}
+
+	_wfd_util_static_ip_set(ifname, peer->client_ip_addr);
+	memcpy(peer->ip_addr, peer->go_ip_addr, IPADDR_LEN);
+
+	wfd_destroy_session(manager);
+
+	g_snprintf(ip_str, IPSTR_LEN, IPSTR, IP2STR(peer->ip_addr));
+	_connect_remote_device(ip_str);
+
+	wfd_state_set(manager, WIFI_DIRECT_STATE_CONNECTED);
+	wfd_util_set_wifi_direct_state(WIFI_DIRECT_STATE_CONNECTED);
+
+	wifi_direct_client_noti_s noti;
+	memset(&noti, 0x0, sizeof(wifi_direct_client_noti_s));
+	noti.event = WIFI_DIRECT_CLI_EVENT_CONNECTION_RSP;
+	noti.error = WIFI_DIRECT_ERROR_NONE;
+	snprintf(noti.param1, MACSTR_LEN, MACSTR, MAC2STR(peer->dev_addr));
+	wfd_client_send_event(manager, &noti);
+
+	__WDS_LOG_FUNC_EXIT__;
+	return 0;
+}
+
+int wfd_util_ip_over_eap_lease(wfd_device_s *peer)
+{
+	__WDS_LOG_FUNC_ENTER__;
+	wfd_manager_s *manager = wfd_get_manager();
+	wfd_group_s *group = (wfd_group_s*)manager->group;
+
+	if (!peer || !group) {
+		WDS_LOGE("Invalid paramater");
+		return -1;
+	}
+
+	memcpy(peer->ip_addr, peer->client_ip_addr, IPADDR_LEN);
+
+	wifi_direct_client_noti_s noti;
+	memset(&noti, 0x0, sizeof(wifi_direct_client_noti_s));
+	noti.event = WIFI_DIRECT_CLI_EVENT_IP_LEASED_IND;
+	noti.error = WIFI_DIRECT_ERROR_NONE;
+	snprintf(noti.param1, MACSTR_LEN, MACSTR, MAC2STR(peer->dev_addr));
+	snprintf(noti.param2, IPSTR_LEN, IPSTR, IP2STR(peer->ip_addr));
+	wfd_client_send_event(manager, &noti);
+
+	__WDS_LOG_FUNC_EXIT__;
+	return 0;
+}
+#endif /* CTRL_IFACE_DBUS */

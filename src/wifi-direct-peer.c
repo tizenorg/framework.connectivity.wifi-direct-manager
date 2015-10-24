@@ -28,7 +28,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
-#include <sys/time.h>
+
 #include <glib.h>
 
 #include <wifi-direct.h>
@@ -55,20 +55,19 @@ wfd_device_s *wfd_add_peer(void *data, unsigned char *dev_addr, char *dev_name)
 
 	peer = wfd_peer_find_by_dev_addr(manager, dev_addr);
 	if (peer) {
-		WDS_LOGE("Peer already exist[" MACSTR "]", MAC2STR(dev_addr));
+		WDS_LOGD("Peer already exist[" MACSECSTR "]", MAC2SECSTR(dev_addr));
 		__WDS_LOG_FUNC_EXIT__;
-		return NULL;
+		return peer;
 	}
 
-	peer = (wfd_device_s*) g_try_malloc0_n(1, sizeof(wfd_device_s));
+	peer = (wfd_device_s*) g_try_malloc0(sizeof(wfd_device_s));
 	if (peer == NULL) {
 		WDS_LOGE("Failed to allocate memory for peer[" MACSTR "]", MAC2STR(dev_addr));
 		__WDS_LOG_FUNC_EXIT__;
 		return NULL;
 	}
 	memcpy(peer->dev_addr, dev_addr, MACADDR_LEN);
-	strncpy(peer->dev_name, dev_name, DEV_NAME_LEN);
-	peer->dev_name[DEV_NAME_LEN-1] = '\0';
+	g_strlcpy(peer->dev_name, dev_name, DEV_NAME_LEN + 1);
 
 	manager->peers = g_list_prepend(manager->peers, peer);
 	manager->peer_count++;
@@ -99,12 +98,7 @@ int wfd_remove_peer(void *data, unsigned char *dev_addr)
 	manager->peers = g_list_remove(manager->peers, peer);
 	manager->peer_count--;
 
-#ifdef TIZEN_FEATURE_WIFI_DISPLAY
-	if (peer->display)
-		free(peer->display);
-#endif /* TIZEN_FEATURE_WIFI_DISPLAY */
-
-	free(peer);
+	g_free(peer);
 
 	__WDS_LOG_FUNC_EXIT__;
 	return 0;
@@ -123,7 +117,7 @@ int wfd_update_peer_time(void*data, unsigned char *peer_addr)
 
 	peer = wfd_peer_find_by_dev_addr(manager, peer_addr);
 	if (!peer) {
-		WDS_SECLOG("Peer not found [" MACSTR "]", MAC2STR(peer_addr));
+		WDS_LOGD("Peer not found [" MACSECSTR "]", MAC2SECSTR(peer_addr));
 		return -1;
 	}
 
@@ -159,10 +153,10 @@ int wfd_update_peer(void *data, wfd_device_s *peer)
 
 	if (oem_dev->age > 30 && peer->state == WFD_PEER_STATE_DISCOVERED) {
 		WDS_LOGE("Too old age to update peer");
+		g_free(oem_dev);
 		return -1;
 	}
-	strncpy(peer->dev_name, oem_dev->dev_name, DEV_NAME_LEN);
-	peer->dev_name[DEV_NAME_LEN] = '\0';
+	g_strlcpy(peer->dev_name, oem_dev->dev_name, DEV_NAME_LEN + 1);
 	memcpy(peer->intf_addr, oem_dev->intf_addr, MACADDR_LEN);
 	memcpy(peer->go_dev_addr, oem_dev->go_dev_addr, MACADDR_LEN);
 	peer->channel = oem_dev->channel;
@@ -175,15 +169,10 @@ int wfd_update_peer(void *data, wfd_device_s *peer)
 	peer->wps_mode =  oem_dev->wps_mode;
 
 #ifdef TIZEN_FEATURE_WIFI_DISPLAY
-	if (peer->display) {
-		WDS_LOGD("Display information is already exist");
-		free(peer->display);
-		peer->display = NULL;
-	}
-	peer->display = (wfd_display_s*) oem_dev->display;
+	memcpy(&(peer->display), &(oem_dev->display), sizeof(wfd_display_s));
 #endif /* TIZEN_FEATURE_WIFI_DISPLAY */
 
-	free(oem_dev);
+	g_free(oem_dev);
 
 #if !(__GNUC__ <= 4 && __GNUC_MINOR__ < 8)
 	wfd_util_get_current_time(&peer->time);
@@ -212,26 +201,22 @@ int wfd_peer_clear_all(void *data)
 	temp = g_list_first(manager->peers);
 	while(temp) {
 		peer = (wfd_device_s*) temp->data;
-		if (peer) {
-#ifdef TIZEN_FEATURE_WIFI_DISPLAY
-			if (peer->display)
-				free(peer->display);
-#endif /* TIZEN_FEATURE_WIFI_DISPLAY */
-
-			free(peer);
-		}
+		g_free(peer);
 		temp = g_list_next(temp);
 		manager->peer_count--;
 	}
-	g_list_free(manager->peers);
-	manager->peers = NULL;
+
+	if(manager->peers) {
+		g_list_free(manager->peers);
+		manager->peers = NULL;
+	}
 
 	if (manager->peer_count){
 		WDS_LOGE("Peer count is not synced. left count=%d", manager->peer_count);
 		manager->peer_count = 0;
 		return 1;
 	}
-	
+
 	__WDS_LOG_FUNC_EXIT__;
 	return 0;
 }
@@ -257,7 +242,7 @@ wfd_device_s *wfd_peer_find_by_dev_addr(void *data, unsigned char *dev_addr)
 	while (temp) {
 		peer = temp->data;
 		if (!memcmp(peer->dev_addr, dev_addr, MACADDR_LEN)) {
-			WDS_SECLOG("Peer device found[" MACSTR "]", MAC2STR(dev_addr));
+			WDS_LOGD("Peer device found[" MACSECSTR "]", MAC2SECSTR(dev_addr));
 			break;
 		}
 		temp = g_list_next(temp);
@@ -290,7 +275,7 @@ wfd_device_s *wfd_peer_find_by_intf_addr(void *data, unsigned char *intf_addr)
 	while (temp) {
 		peer = temp->data;
 		if (!memcmp(peer->intf_addr, intf_addr, MACADDR_LEN)) {
-			WDS_SECLOG("Peer device found[" MACSTR "]", MAC2STR(intf_addr));
+			WDS_LOGD("Peer device found[" MACSECSTR "]", MAC2SECSTR(intf_addr));
 			break;
 		}
 		temp = g_list_next(temp);
@@ -324,7 +309,7 @@ wfd_device_s *wfd_peer_find_by_addr(void *data, unsigned char *addr)
 		peer = temp->data;
 		if (!memcmp(peer->dev_addr, addr, MACADDR_LEN) ||
 				!memcmp(peer->intf_addr, addr, MACADDR_LEN)) {
-			WDS_SECLOG("Peer device found[" MACSTR "]", MAC2STR(addr));
+			WDS_LOGD("Peer device found[" MACSECSTR "]", MAC2SECSTR(addr));
 			break;
 		}
 		temp = g_list_next(temp);
@@ -344,7 +329,7 @@ wfd_device_s *wfd_peer_find_current_peer(void *data)
 		WDS_LOGE("Invalid parameter");
 		return NULL;
 	}
-	
+
 	wfd_session_s *session = manager->session;
 	if (!session) {
 		WDS_LOGE("Session not found");

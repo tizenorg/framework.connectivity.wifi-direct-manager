@@ -30,7 +30,15 @@
 
 #define DEFAULT_DEVICE_NAME "Tizen_Device"
 #define DEFAULT_IFNAME "p2p0"
-#define GROUP_IFNAME "p2p-wlan0-0"
+#if defined TIZEN_TV
+#	define GROUP_IFNAME "p2p0"
+#else
+#if defined TIZEN_WLAN_BOARD_SPRD
+#	define GROUP_IFNAME "p2p0"
+#else /* TIZEN_WLAN_BOARD_SPRD */
+#	define GROUP_IFNAME "p2p-wlan0-0"
+#endif /* TIZEN_WLAN_BOARD_SPRD */
+#endif
 #define WFD_MAX_CLIENT 16
 #define WFD_MAX_STATION 8
 
@@ -40,6 +48,8 @@
 #define IPADDR_LEN 4
 #define IPSTR_LEN 16
 #define PINSTR_LEN 8
+#define PASSPHRASE_LEN_MAX 63
+#define PASSPHRASE_LEN_MIN 8
 
 #if 0
 typedef enum {
@@ -78,11 +88,12 @@ typedef enum {
 } wfd_peer_state_e;
 
 typedef enum {
-	WFD_IP_TYPE_DYNAMIC,
-	WFD_IP_TYPE_STATIC,
+	WFD_IP_TYPE_DYNAMIC = 0x0,
+	WFD_IP_TYPE_OVER_EAPOL = 0x1,
 } wfd_ip_type_e;
 
 #ifdef TIZEN_FEATURE_WIFI_DISPLAY
+
 typedef enum {
 	WFD_DISPLAY_TYPE_SOURCE,
 	WFD_DISPLAY_TYPE_PRISINK,
@@ -100,6 +111,12 @@ typedef struct {
 	int port;
 	int max_tput;
 } wfd_display_s;
+
+#define WIFI_DISPLAY_DEFAULT_TYPE WFD_DISPLAY_TYPE_SOURCE
+#define WIFI_DISPLAY_DEFAULT_AVAIL 1
+#define WIFI_DISPLAY_DEFAULT_HDCP 1
+#define WIFI_DISPLAY_DEFAULT_PORT 7236
+#define WIFI_DISPLAY_DEFAULT_TPUT 54
 #endif /* TIZEN_FEATURE_WIFI_DISPLAY */
 
 typedef struct {
@@ -119,8 +136,10 @@ typedef struct {
 	int group_flags;
 	int wps_mode;
 
+	char passphrase[PASSPHRASE_LEN_MAX + 1];
+
 #ifdef TIZEN_FEATURE_WIFI_DISPLAY
-	wfd_display_s *display;
+	wfd_display_s display;
 #endif /* TIZEN_FEATURE_WIFI_DISPLAY */
 
 #ifdef TIZEN_FEATURE_SERVICE_DISCOVERY
@@ -129,6 +148,10 @@ typedef struct {
 #endif /* TIZEN_FEATURE_SERVICE_DISCOVERY */
 
 	unsigned char ip_addr[IPADDR_LEN];
+
+	int ip_type;
+	unsigned char client_ip_addr[IPADDR_LEN];
+	unsigned char go_ip_addr[IPADDR_LEN];
 } wfd_device_s;
 
 typedef struct {
@@ -147,6 +170,7 @@ typedef struct {
 	int req_wps_mode;
 	int max_station;
 	int autoconnection;
+	unsigned char autoconnection_peer[MACADDR_LEN];
 	char auto_pin[PINSTR_LEN+1];	// for NFC Printer
 	int scan_mode;
 
@@ -165,7 +189,7 @@ wfd_manager_s *wfd_get_manager();
 int wfd_local_reset_data(wfd_manager_s *manager);
 int wfd_local_get_dev_name(char *dev_name);
 int wfd_local_set_dev_name(char *dev_name);
-int wfd_local_get_dev_mac(unsigned char *dev_mac);
+int wfd_local_get_dev_mac(char *dev_mac);
 #if 0
 int wfd_local_get_intf_mac(unsigned char *intf_mac);
 int wfd_local_set_wps_mode(int wps_mode);
@@ -196,5 +220,10 @@ int wfd_manager_get_peer_info(wfd_manager_s *manager, unsigned char* addr, wfd_d
 int wfd_manager_get_peers(wfd_manager_s *manager, wfd_discovery_entry_s **peers);
 int wfd_manager_get_connected_peers(wfd_manager_s *manager, wfd_connected_peer_info_s **peers_data);
 int wfd_manager_get_goup_ifname(char **ifname);
+wfd_device_s *wfd_manager_get_peer_by_addr(wfd_manager_s *manager, unsigned char *peer_addr);
+#ifdef TIZEN_FEATURE_WIFI_DISPLAY
+int wfd_manager_set_display_device(int type, int port, int hdcp);
+int wfd_manager_set_session_availability(int availability);
+#endif /* TIZEN_FEATURE_WIFI_DISPLAY */
 
 #endif /* __WIFI_DIRECT_MANAGER_H__ */
